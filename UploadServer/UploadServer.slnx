@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="../UploadClient/UploadClient.csproj" />
-  <Project Path="UploadServer.csproj" />
-</Solution>

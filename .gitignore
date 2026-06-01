@@ -1,3 +1,1 @@
-.vs/
-bin/
-obj/
+printf ".vs/\nbin/\nobj/\n**/bin/\n**/obj/\n*.user\n*.suo\n" > .gitignore

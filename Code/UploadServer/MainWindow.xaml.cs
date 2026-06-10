@@ -9,48 +9,49 @@ namespace UploadServer
     public partial class MainWindow : Window
     {
         private TcpListener listener;
+private bool isRunning = false;
 
-        public MainWindow()
-        {
-            InitializeComponent();
-        }
+private async void btnStart_Click(object sender, RoutedEventArgs e)
+{
+    if (isRunning) { MessageBox.Show("Server đang chạy rồi!"); return; }
 
-        private async void btnStart_Click(object sender, RoutedEventArgs e)
-        {
-            int port = int.Parse(txtPort.Text);
+    try
+    {
+        int port = int.Parse(txtPort.Text); // Đảm bảo đã nhập port
+        listener = new TcpListener(System.Net.IPAddress.Any, port);
+        listener.Start();
+        isRunning = true;
+        txtLog.AppendText("Server đã bắt đầu tại cổng " + port + "...\n");
 
-            listener = new TcpListener(IPAddress.Any, port);
-            listener.Start();
-
-            txtLog.AppendText("Server started\n");
-
-            while (true)
-            {
+        // Chạy vòng lặp lắng nghe kết nối trên luồng riêng
+        await Task.Run(async () => {
+            while (isRunning) {
                 TcpClient client = await listener.AcceptTcpClientAsync();
+                HandleClient(client); // Xử lý kết nối ngay khi có người ping
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        isRunning = false;
+        MessageBox.Show("Lỗi khởi tạo Server: " + ex.Message);
+    }
+}
 
-                _ = Task.Run(async () =>
-                {
-                    NetworkStream stream = client.GetStream();
-
-                    byte[] buffer = new byte[1024];
-                    int bytes = await stream.ReadAsync(buffer, 0, buffer.Length);
-
-                    string msg = Encoding.UTF8.GetString(buffer, 0, bytes);
-
-                    Dispatcher.Invoke(() =>
-                    {
-                        txtLog.AppendText("Received: " + msg + "\n");
-                    });
-
-                    if (msg == "ping")
-                    {
-                        byte[] pong = Encoding.UTF8.GetBytes("pong");
-                        await stream.WriteAsync(pong, 0, pong.Length);
-                    }
-
-                    client.Close();
-                });
+private async void HandleClient(TcpClient client)
+{
+    try {
+        using (NetworkStream stream = client.GetStream()) {
+            byte[] buffer = new byte[1024];
+            int bytes = await stream.ReadAsync(buffer, 0, buffer.Length);
+            string request = Encoding.UTF8.GetString(buffer, 0, bytes);
+            
+            if (request.Contains("ping")) {
+                byte[] response = Encoding.UTF8.GetBytes("pong");
+                await stream.WriteAsync(response, 0, response.Length);
             }
         }
     }
+    catch { /* Bỏ qua lỗi kết nối nhỏ */ }
+    finally { client.Close(); }
 }

@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Chạy Server",
+      "type": "clr",
+      "request": "launch",
+      "program": "${workspaceFolder}/Code/UploadServer/bin/Debug/UploadServer.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/Code/UploadServer/bin/Debug/",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Chạy Client",
+      "type": "clr",
+      "request": "launch",
+      "program": "${workspaceFolder}/Code/UploadClient/bin/Debug/UploadClient.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/Code/UploadClient/bin/Debug/",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    }
+  ]
+}

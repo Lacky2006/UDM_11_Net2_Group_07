@@ -1,14 +1,14 @@
-D:\TKGT\UploadServer\obj\Debug\UploadServer.csproj.AssemblyReference.cache
-D:\TKGT\UploadServer\obj\Debug\MainWindow.baml
-D:\TKGT\UploadServer\obj\Debug\MainWindow.g.cs
-D:\TKGT\UploadServer\obj\Debug\App.g.cs
-D:\TKGT\UploadServer\obj\Debug\UploadServer_MarkupCompile.cache
-D:\TKGT\UploadServer\obj\Debug\UploadServer.g.resources
-D:\TKGT\UploadServer\obj\Debug\UploadServer.Properties.Resources.resources
-D:\TKGT\UploadServer\obj\Debug\UploadServer.csproj.GenerateResource.cache
-D:\TKGT\UploadServer\obj\Debug\UploadServer.csproj.CoreCompileInputs.cache
-D:\TKGT\UploadServer\bin\Debug\UploadServer.exe.config
-D:\TKGT\UploadServer\bin\Debug\UploadServer.exe
-D:\TKGT\UploadServer\bin\Debug\UploadServer.pdb
-D:\TKGT\UploadServer\obj\Debug\UploadServer.exe
-D:\TKGT\UploadServer\obj\Debug\UploadServer.pdb
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\bin\Debug\UploadServer.exe.config
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\bin\Debug\UploadServer.exe
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\bin\Debug\UploadServer.pdb
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\UploadServer.csproj.AssemblyReference.cache
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\MainWindow.baml
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\MainWindow.g.cs
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\App.g.cs
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\UploadServer_MarkupCompile.cache
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\UploadServer.g.resources
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\UploadServer.Properties.Resources.resources
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\UploadServer.csproj.GenerateResource.cache
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\UploadServer.csproj.CoreCompileInputs.cache
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\UploadServer.exe
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadServer\obj\Debug\UploadServer.pdb

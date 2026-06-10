@@ -1,0 +1,102 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadServer\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Code\\UploadServer\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Code\\UploadClient\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\UploadClient.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Code\\UploadClient\\UploadClient.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml||{FA3CD31E-987B-443A-9B81-186104E8DAC1}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Code\\UploadClient\\MainWindow.xaml||{FA3CD31E-987B-443A-9B81-186104E8DAC1}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadServer\\UploadServer.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Code\\UploadServer\\UploadServer.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 2,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "MainWindow.xaml",
+              "DocumentMoniker": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml",
+              "RelativeDocumentMoniker": "Code\\UploadClient\\MainWindow.xaml",
+              "ToolTip": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml",
+              "RelativeToolTip": "Code\\UploadClient\\MainWindow.xaml",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAkAAAAnAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2026-06-10T05:05:06.553Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "UploadClient.csproj",
+              "DocumentMoniker": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\UploadClient.csproj",
+              "RelativeDocumentMoniker": "Code\\UploadClient\\UploadClient.csproj",
+              "ToolTip": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\UploadClient.csproj",
+              "RelativeToolTip": "Code\\UploadClient\\UploadClient.csproj",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2026-06-10T05:02:57.635Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "MainWindow.xaml.cs",
+              "DocumentMoniker": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadServer\\MainWindow.xaml.cs",
+              "RelativeDocumentMoniker": "Code\\UploadServer\\MainWindow.xaml.cs",
+              "ToolTip": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadServer\\MainWindow.xaml.cs",
+              "RelativeToolTip": "Code\\UploadServer\\MainWindow.xaml.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAgAAAAsAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-10T04:58:39.421Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "UploadServer.csproj",
+              "DocumentMoniker": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadServer\\UploadServer.csproj",
+              "RelativeDocumentMoniker": "Code\\UploadServer\\UploadServer.csproj",
+              "ToolTip": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadServer\\UploadServer.csproj",
+              "RelativeToolTip": "Code\\UploadServer\\UploadServer.csproj",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2026-06-10T04:58:38.332Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "MainWindow.xaml.cs",
+              "DocumentMoniker": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml.cs",
+              "RelativeDocumentMoniker": "Code\\UploadClient\\MainWindow.xaml.cs",
+              "ToolTip": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml.cs",
+              "RelativeToolTip": "Code\\UploadClient\\MainWindow.xaml.cs",
+              "ViewState": "AgIAACMAAAAAAAAAAAAiwCoAAAAgAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-06-10T04:58:25.078Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

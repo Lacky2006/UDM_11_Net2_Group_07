@@ -3,12 +3,12 @@
   "WorkspaceRootPath": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Code\\UploadClient\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadServer\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Code\\UploadServer\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Code\\UploadClient\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\UploadClient.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}",
@@ -30,7 +30,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 4,
+          "SelectedChildIndex": 2,
           "Children": [
             {
               "$type": "Document",
@@ -58,13 +58,13 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 0,
               "Title": "MainWindow.xaml.cs",
               "DocumentMoniker": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadServer\\MainWindow.xaml.cs",
               "RelativeDocumentMoniker": "Code\\UploadServer\\MainWindow.xaml.cs",
               "ToolTip": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadServer\\MainWindow.xaml.cs",
               "RelativeToolTip": "Code\\UploadServer\\MainWindow.xaml.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAgAAAAsAAAAAAAAAA==",
+              "ViewState": "AgIAADAAAAAAAAAAAAAAAA0AAAAwAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-06-10T04:58:39.421Z",
               "EditorCaption": ""
@@ -83,13 +83,13 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "MainWindow.xaml.cs",
               "DocumentMoniker": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml.cs",
               "RelativeDocumentMoniker": "Code\\UploadClient\\MainWindow.xaml.cs",
               "ToolTip": "C:\\Users\\Quang Vinh\\UDM_11_Net2_Group_07\\Code\\UploadClient\\MainWindow.xaml.cs",
               "RelativeToolTip": "Code\\UploadClient\\MainWindow.xaml.cs",
-              "ViewState": "AgIAAAUAAAAAAAAAAAAiwCoAAAAgAAAAAAAAAA==",
+              "ViewState": "AgIAAA8AAAAAAAAAAAAAAAQAAAAdAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-06-10T04:58:25.078Z",
               "EditorCaption": ""

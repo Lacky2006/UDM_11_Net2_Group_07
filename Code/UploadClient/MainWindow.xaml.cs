@@ -15,21 +15,21 @@ namespace UploadClient
             btnPing.IsEnabled = false;
         }
 
-        // Logic chuẩn: Kết nối thật tới Server trước khi cho phép dùng nút Ping
+
         private async void btnConnect_Click(object sender, RoutedEventArgs e)
         {
             txtLog.AppendText("Đang kiểm tra kết nối...\n");
-            btnConnect.IsEnabled = false; // Khóa nút để tránh bấm nhiều lần
+            btnConnect.IsEnabled = false; 
 
             try
             {
                 using (TcpClient client = new TcpClient())
                 {
-                    // Thử kết nối trong vòng 2 giây
+                    
                     var connectTask = client.ConnectAsync(txtIP.Text, int.Parse(txtPort.Text));
                     if (await Task.WhenAny(connectTask, Task.Delay(2000)) == connectTask)
                     {
-                        await connectTask; // Kiểm tra lỗi nếu có
+                        await connectTask; 
                         btnPing.IsEnabled = true;
                         btnPing.Background = Brushes.LightGreen;
                         txtLog.AppendText("Kết nối thành công!\n");
@@ -51,7 +51,7 @@ namespace UploadClient
             }
         }
 
-        // Logic chuẩn: Dùng async/await để không cần Task.Run và Dispatcher.Invoke
+        
         private async void btnPing_Click(object sender, RoutedEventArgs e)
         {
             txtLog.AppendText("Đang ping...\n");

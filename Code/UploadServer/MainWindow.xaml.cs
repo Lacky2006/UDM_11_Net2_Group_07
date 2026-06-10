@@ -23,11 +23,11 @@ private async void btnStart_Click(object sender, RoutedEventArgs e)
         isRunning = true;
         txtLog.AppendText("Server đã bắt đầu tại cổng " + port + "...\n");
 
-        // Chạy vòng lặp lắng nghe kết nối trên luồng riêng
+        
         await Task.Run(async () => {
             while (isRunning) {
                 TcpClient client = await listener.AcceptTcpClientAsync();
-                HandleClient(client); // Xử lý kết nối ngay khi có người ping
+                HandleClient(client); 
             }
         });
     }

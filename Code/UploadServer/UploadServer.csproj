@@ -4,7 +4,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{B2C3D4E5-F6A7-8B9C-0D1E-2F3A4B5C6D7E}</ProjectGuid>
+    <ProjectGuid>{E800EBF6-9CAE-43E6-A970-D18E260AC878}</ProjectGuid>
     <OutputType>WinExe</OutputType>
     <RootNamespace>UploadServer</RootNamespace>
     <AssemblyName>UploadServer</AssemblyName>
@@ -67,6 +67,10 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="Resources\DarkTheme.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs">

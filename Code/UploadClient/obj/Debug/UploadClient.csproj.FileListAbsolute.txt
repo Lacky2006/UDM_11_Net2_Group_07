@@ -1,0 +1,14 @@
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\bin\Debug\UploadClient.exe.config
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\bin\Debug\UploadClient.exe
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\bin\Debug\UploadClient.pdb
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\UploadClient.csproj.AssemblyReference.cache
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\MainWindow.baml
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\MainWindow.g.cs
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\App.g.cs
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\UploadClient_MarkupCompile.cache
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\UploadClient.g.resources
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\UploadClient.Properties.Resources.resources
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\UploadClient.csproj.GenerateResource.cache
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\UploadClient.csproj.CoreCompileInputs.cache
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\UploadClient.exe
+C:\Users\Quang Vinh\UDM_11_Net2_Group_07\Code\UploadClient\obj\Debug\UploadClient.pdb

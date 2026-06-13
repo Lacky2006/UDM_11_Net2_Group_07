@@ -3,39 +3,94 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Upload Server"
         Height="500"
-        Width="800">
+        Width="800"
+        WindowStartupLocation="CenterScreen"
+        Background="#F4F6F8">
 
-    <Grid Margin="10">
+	<Grid Margin="20">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
 
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+		<TextBlock Grid.Row="0"
+                   Text="UPLOAD SERVER"
+                   FontSize="24"
+                   FontWeight="Bold"
+                   Foreground="#2C3E50"
+                   Margin="0,0,0,20"/>
 
-        <StackPanel Orientation="Horizontal">
+		<Border Grid.Row="1"
+                Background="White"
+                CornerRadius="8"
+                Padding="15"
+                Margin="0,0,0,15"
+                BorderBrush="#DADDE1"
+                BorderThickness="1">
 
-            <TextBlock Text="Port:"
-                       VerticalAlignment="Center"/>
+			<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 
-            <TextBox x:Name="txtPort"
-                     Width="100"
-                     Margin="5"
-                     Text="9000"/>
+				<TextBlock Text="Server IP:"
+                           FontSize="16"
+                           VerticalAlignment="Center"
+                           Margin="0,0,10,0"/>
 
-            <Button x:Name="btnStart"
-                    Width="120"
-                    Content="Start Server"
-                    Click="btnStart_Click"/>
+				<TextBox x:Name="txtIP"
+                         Width="140"
+                         Height="35"
+                         Text="0.0.0.0"
+                         FontSize="15"
+                         VerticalContentAlignment="Center"
+                         Margin="0,0,15,0"/>
 
-        </StackPanel>
+				<TextBlock Text="Port:"
+                           FontSize="16"
+                           VerticalAlignment="Center"
+                           Margin="0,0,10,0"/>
 
-        <TextBox x:Name="txtLog"
-                 Grid.Row="1"
-                 Margin="0,10,0,0"
-                 IsReadOnly="True"
-                 AcceptsReturn="True"
-                 VerticalScrollBarVisibility="Auto"/>
+				<TextBox x:Name="txtPort"
+                         Width="100"
+                         Height="35"
+                         Text="9000"
+                         FontSize="15"
+                         VerticalContentAlignment="Center"
+                         Margin="0,0,15,0"/>
 
-    </Grid>
+				<Button x:Name="btnStart"
+                        Content="Start Server"
+                        Width="130"
+                        Height="35"
+                        FontSize="15"
+                        Margin="0,0,10,0"
+                        Click="btnStart_Click"/>
 
+				<Button x:Name="btnStop"
+                        Content="Stop Server"
+                        Width="130"
+                        Height="35"
+                        FontSize="15"
+                        IsEnabled="False"
+                        Click="btnStop_Click"/>
+			</StackPanel>
+		</Border>
+
+		<Border Grid.Row="2"
+                Background="White"
+                CornerRadius="8"
+                Padding="10"
+                BorderBrush="#DADDE1"
+                BorderThickness="1">
+
+			<TextBox x:Name="txtLog"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto"
+                     FontFamily="Consolas"
+                     FontSize="14"
+                     Background="#FAFAFA"/>
+		</Border>
+	</Grid>
 </Window>

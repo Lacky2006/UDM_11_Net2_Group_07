@@ -5,7 +5,9 @@
         Height="620"
         Width="820"
         WindowStartupLocation="CenterScreen"
-        Background="#F4F6F8">
+        Background="#F4F6F8"
+        AllowDrop="True"
+        Drop="Window_Drop">
 
 	<Grid Margin="20">
 		<Grid.RowDefinitions>
@@ -147,7 +149,7 @@
 			</Grid>
 		</Border>
 
-		<Border Grid.Row="3"
+        <Border Grid.Row="3"
                 Background="White"
                 CornerRadius="8"
                 Padding="15"
@@ -155,28 +157,28 @@
                 BorderBrush="#DADDE1"
                 BorderThickness="1">
 
-			<Grid>
-				<Grid.ColumnDefinitions>
-					<ColumnDefinition Width="*"/>
-					<ColumnDefinition Width="70"/>
-				</Grid.ColumnDefinitions>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto" MinWidth="70"/>
+                </Grid.ColumnDefinitions>
 
-				<ProgressBar x:Name="progressUpload"
+                <ProgressBar x:Name="progressUpload"
                              Height="28"
                              Minimum="0"
-                             Maximum="100"/>
-
-				<TextBlock x:Name="lblProgress"
+                             Maximum="100"
+                             Margin="0,0,15,0"/>
+                <TextBlock x:Name="lblProgress"
                            Grid.Column="1"
                            Text="0%"
                            FontSize="15"
                            FontWeight="Bold"
-                           HorizontalAlignment="Center"
+                           HorizontalAlignment="Right"
                            VerticalAlignment="Center"/>
-			</Grid>
-		</Border>
+            </Grid>
+        </Border>
 
-		<Border Grid.Row="4"
+        <Border Grid.Row="4"
                 Background="White"
                 CornerRadius="8"
                 Padding="10"

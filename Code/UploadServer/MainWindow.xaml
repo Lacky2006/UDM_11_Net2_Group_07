@@ -14,8 +14,7 @@
 			<RowDefinition Height="*"/>
 		</Grid.RowDefinitions>
 
-		<TextBlock Grid.Row="0"
-                   Text="UPLOAD SERVER"
+		<TextBlock Text="UPLOAD SERVER"
                    FontSize="24"
                    FontWeight="Bold"
                    Foreground="#2C3E50"
@@ -30,32 +29,28 @@
                 BorderThickness="1">
 
 			<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-
-				<TextBlock Text="Server IP:"
-                           FontSize="16"
-                           VerticalAlignment="Center"
-                           Margin="0,0,10,0"/>
+				<TextBlock Text="Server IP:" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
 
 				<TextBox x:Name="txtIP"
-                         Width="140"
+                         Width="150"
                          Height="35"
-                         Text="0.0.0.0"
+                         IsReadOnly="True"
+                         Background="#EFEFEF"
                          FontSize="15"
                          VerticalContentAlignment="Center"
                          Margin="0,0,15,0"/>
 
-				<TextBlock Text="Port:"
-                           FontSize="16"
-                           VerticalAlignment="Center"
-                           Margin="0,0,10,0"/>
+				<TextBlock Text="Port:" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
 
 				<TextBox x:Name="txtPort"
                          Width="100"
                          Height="35"
                          Text="9000"
+                         MaxLength="5"
                          FontSize="15"
                          VerticalContentAlignment="Center"
-                         Margin="0,0,15,0"/>
+                         Margin="0,0,15,0"
+                         PreviewTextInput="txtPort_PreviewTextInput"/>
 
 				<Button x:Name="btnStart"
                         Content="Start Server"

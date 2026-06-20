@@ -1,66 +1,58 @@
 ﻿using Microsoft.Win32;
 using System;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace UploadClient
 {
     public partial class MainWindow : Window
     {
+        private const int BufferSize = 64 * 1024;
+
         private bool isConnected = false;
-        private string selectedFilePath = "";
+        private bool isUploading = false;
+        private TcpClient uploadClient;
         private CancellationTokenSource monitorCts;
+        private CancellationTokenSource uploadCts;
+        private readonly ObservableCollection<string> fileList = new ObservableCollection<string>();
 
         public MainWindow()
         {
             InitializeComponent();
-
+            txtIP.Text = GetLocalIPv4();
+            lstFiles.ItemsSource = fileList;
+            DataObject.AddPastingHandler(txtPort, txtPort_Paste);
             SetConnectionState(false);
             SetProgress(0);
         }
 
         private async void btnConnect_Click(object sender, RoutedEventArgs e)
         {
-            string ip = txtIP.Text.Trim();
-
-            if (string.IsNullOrWhiteSpace(ip))
-            {
-                MessageBox.Show("Vui lòng nhập Server IP!");
-                return;
-            }
-
-            if (!int.TryParse(txtPort.Text.Trim(), out int port))
-            {
-                MessageBox.Show("Port không hợp lệ!");
-                return;
-            }
-
-            if (port < 1 || port > 65535)
-            {
-                MessageBox.Show("Port phải nằm trong khoảng 1 đến 65535!");
-                return;
-            }
+            string ip;
+            int port;
+            if (!TryGetServerInfo(out ip, out port)) return;
 
             AppendLog("Đang kết nối tới Server...\n");
 
-            bool ok = await PingServerAsync(ip, port, 2000);
-
-            if (!ok)
+            if (!await PingServerAsync(ip, port, 2000))
             {
-                AppendLog("Kết nối thất bại. Server chưa bật hoặc sai IP/Port.\n");
-                SetConnectionState(false);
+                AppendLog("Kết nối thất bại. Kiểm tra lại IP/Port hoặc Server chưa bật.\n");
                 return;
             }
 
-            AppendLog("Kết nối Server thành công!\n");
-
             SetConnectionState(true);
             StartServerMonitor(ip, port);
+            AppendLog("Kết nối Server thành công!\n");
         }
 
         private void btnDisconnect_Click(object sender, RoutedEventArgs e)
@@ -71,134 +63,162 @@ namespace UploadClient
         private void btnSelectFile_Click(object sender, RoutedEventArgs e)
         {
             OpenFileDialog dialog = new OpenFileDialog();
-            dialog.Title = "Chọn 1 file để upload";
-            dialog.Multiselect = false;
+            dialog.Title = "Chọn file để upload";
+            dialog.Multiselect = true;
 
-            bool? result = dialog.ShowDialog();
+            if (dialog.ShowDialog() != true) return;
 
-            if (result == true)
+            int added = 0;
+            foreach (string path in dialog.FileNames)
             {
-                selectedFilePath = dialog.FileName;
-                txtSelectedFile.Text = selectedFilePath;
-
-                FileInfo fileInfo = new FileInfo(selectedFilePath);
-
-                AppendLog($"Đã chọn file: {fileInfo.Name}\n");
-                AppendLog($"Dung lượng: {FormatFileSize(fileInfo.Length)}\n");
-
-                btnUpload.IsEnabled = isConnected;
-                SetProgress(0);
+                if (!fileList.Contains(path))
+                {
+                    fileList.Add(path);
+                    added++;
+                }
             }
+
+            SetProgress(0);
+            AppendLog($"Đã thêm {added} file vào danh sách.\n");
+            SetButtonState();
+        }
+
+        private void btnClearList_Click(object sender, RoutedEventArgs e)
+        {
+            if (fileList.Count == 0) return;
+
+            fileList.Clear();
+            SetProgress(0);
+            AppendLog("Đã clear toàn bộ danh sách file.\n");
+            SetButtonState();
         }
 
         private async void btnUpload_Click(object sender, RoutedEventArgs e)
         {
+            string ip;
+            int port;
+
             if (!isConnected)
             {
                 MessageBox.Show("Client chưa kết nối Server!");
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(selectedFilePath) || !File.Exists(selectedFilePath))
+            if (fileList.Count == 0)
             {
                 MessageBox.Show("Vui lòng chọn file trước khi upload!");
                 return;
             }
 
-            string ip = txtIP.Text.Trim();
-            int port = int.Parse(txtPort.Text.Trim());
+            if (!TryGetServerInfo(out ip, out port)) return;
 
-            FileInfo fileInfo = new FileInfo(selectedFilePath);
-
-            btnUpload.IsEnabled = false;
-            btnSelectFile.IsEnabled = false;
-            SetProgress(0);
+            isUploading = true;
+            uploadCts = new CancellationTokenSource();
+            SetButtonState();
 
             try
             {
-                AppendLog($"Bắt đầu upload file: {fileInfo.Name}\n");
+                string[] files = fileList.ToArray();
 
-                using (TcpClient client = new TcpClient())
+                for (int i = 0; i < files.Length; i++)
                 {
-                    bool connected = await ConnectWithTimeoutAsync(client, ip, port, 3000);
+                    uploadCts.Token.ThrowIfCancellationRequested();
 
-                    if (!connected)
+                    if (!File.Exists(files[i]))
                     {
-                        HandleServerStopped();
-                        return;
+                        AppendLog("Bỏ qua file không tồn tại: " + files[i] + "\n");
+                        continue;
                     }
 
-                    using (NetworkStream stream = client.GetStream())
-                    using (FileStream fileStream = new FileStream(
-                        selectedFilePath,
-                        FileMode.Open,
-                        FileAccess.Read,
-                        FileShare.Read,
-                        64 * 1024,
-                        true))
-                    {
-                        /*
-                         * Protocol gửi file:
-                         *
-                         * 4 bytes  : FILE
-                         * 4 bytes  : độ dài tên file
-                         * n bytes  : tên file UTF-8
-                         * 8 bytes  : kích thước file
-                         * data     : dữ liệu file từng chunk
-                         */
-
-                        byte[] commandBytes = Encoding.UTF8.GetBytes("FILE");
-                        byte[] fileNameBytes = Encoding.UTF8.GetBytes(fileInfo.Name);
-                        byte[] fileNameLengthBytes = BitConverter.GetBytes(fileNameBytes.Length);
-                        byte[] fileSizeBytes = BitConverter.GetBytes(fileInfo.Length);
-
-                        await stream.WriteAsync(commandBytes, 0, commandBytes.Length);
-                        await stream.WriteAsync(fileNameLengthBytes, 0, fileNameLengthBytes.Length);
-                        await stream.WriteAsync(fileNameBytes, 0, fileNameBytes.Length);
-                        await stream.WriteAsync(fileSizeBytes, 0, fileSizeBytes.Length);
-
-                        byte[] buffer = new byte[64 * 1024];
-                        long sentBytes = 0;
-
-                        while (sentBytes < fileInfo.Length)
-                        {
-                            int bytesRead = await fileStream.ReadAsync(buffer, 0, buffer.Length);
-
-                            if (bytesRead <= 0)
-                            {
-                                break;
-                            }
-
-                            await stream.WriteAsync(buffer, 0, bytesRead);
-
-                            sentBytes += bytesRead;
-
-                            double percent = sentBytes * 100.0 / fileInfo.Length;
-                            SetProgress(percent);
-                        }
-
-                        await stream.FlushAsync();
-
-                        SetProgress(100);
-                        AppendLog("Upload hoàn tất phía Client.\n");
-                    }
+                    AppendLog($"Upload {i + 1}/{files.Length}: {Path.GetFileName(files[i])}\n");
+                    await UploadOneFileAsync(ip, port, files[i], uploadCts.Token);
+                    SetProgress(100);
+                    AppendLog("Upload xong: " + Path.GetFileName(files[i]) + "\n");
                 }
+
+                AppendLog("Hoàn tất upload toàn bộ danh sách.\n");
+            }
+            catch (Exception ex) when (IsUploadCanceled(ex))
+            {
+                AppendLog("Đã hủy upload.\n");
+            }
+            catch (IOException ex)
+            {
+                AppendLog("Upload bị ngắt: " + ex.Message + "\n");
+                if (!await PingServerAsync(ip, port, 1000)) HandleServerStopped();
+            }
+            catch (SocketException ex)
+            {
+                AppendLog("Lỗi kết nối: " + ex.Message + "\n");
+                if (!await PingServerAsync(ip, port, 1000)) HandleServerStopped();
             }
             catch (Exception ex)
             {
                 AppendLog("Lỗi upload: " + ex.Message + "\n");
+            }
+            finally
+            {
+                CloseUploadConnection();
 
-                bool serverStillAlive = await PingServerAsync(ip, port, 1000);
-
-                if (!serverStillAlive)
+                if (uploadCts != null)
                 {
-                    HandleServerStopped();
+                    uploadCts.Dispose();
+                    uploadCts = null;
+                }
+
+                isUploading = false;
+                SetButtonState();
+            }
+        }
+
+        private async Task UploadOneFileAsync(string ip, int port, string path, CancellationToken token)
+        {
+            FileInfo file = new FileInfo(path);
+            TcpClient client = new TcpClient();
+            uploadClient = client;
+
+            try
+            {
+                if (!await ConnectWithTimeoutAsync(client, ip, port, 3000))
+                {
+                    throw new IOException("Không kết nối được tới Server.");
+                }
+
+                using (NetworkStream stream = client.GetStream())
+                using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, true))
+                {
+                    byte[] nameBytes = Encoding.UTF8.GetBytes(file.Name);
+
+                    await WriteAsync(stream, Encoding.UTF8.GetBytes("FILE"), token);
+                    await WriteAsync(stream, BitConverter.GetBytes(nameBytes.Length), token);
+                    await WriteAsync(stream, nameBytes, token);
+                    await WriteAsync(stream, BitConverter.GetBytes(file.Length), token);
+
+                    byte[] buffer = new byte[BufferSize];
+                    long sent = 0;
+                    SetProgress(0);
+
+                    while (sent < file.Length)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        int read = await fs.ReadAsync(buffer, 0, buffer.Length, token);
+                        if (read <= 0) break;
+
+                        await stream.WriteAsync(buffer, 0, read, token);
+                        sent += read;
+
+                        double percent = file.Length == 0 ? 100 : sent * 100.0 / file.Length;
+                        SetProgress(percent);
+                    }
+
+                    await stream.FlushAsync(token);
                 }
             }
             finally
             {
-                btnSelectFile.IsEnabled = isConnected;
-                btnUpload.IsEnabled = isConnected && File.Exists(selectedFilePath);
+                if (uploadClient == client) uploadClient = null;
+                client.Close();
             }
         }
 
@@ -208,39 +228,20 @@ namespace UploadClient
             {
                 using (TcpClient client = new TcpClient())
                 {
-                    bool connected = await ConnectWithTimeoutAsync(client, ip, port, timeoutMs);
-
-                    if (!connected)
-                    {
-                        return false;
-                    }
+                    if (!await ConnectWithTimeoutAsync(client, ip, port, timeoutMs)) return false;
 
                     using (NetworkStream stream = client.GetStream())
                     {
-                        byte[] data = Encoding.UTF8.GetBytes("ping");
-                        await stream.WriteAsync(data, 0, data.Length);
+                        byte[] ping = Encoding.UTF8.GetBytes("ping");
+                        byte[] buffer = new byte[4];
 
-                        byte[] buffer = new byte[1024];
+                        await stream.WriteAsync(ping, 0, ping.Length);
 
                         Task<int> readTask = stream.ReadAsync(buffer, 0, buffer.Length);
-                        Task timeoutTask = Task.Delay(timeoutMs);
+                        if (await Task.WhenAny(readTask, Task.Delay(timeoutMs)) != readTask) return false;
 
-                        Task completedTask = await Task.WhenAny(readTask, timeoutTask);
-
-                        if (completedTask != readTask)
-                        {
-                            return false;
-                        }
-
-                        int bytes = await readTask;
-
-                        if (bytes <= 0)
-                        {
-                            return false;
-                        }
-
-                        string response = Encoding.UTF8.GetString(buffer, 0, bytes);
-                        return response.Contains("pong");
+                        int read = await readTask;
+                        return read > 0 && Encoding.UTF8.GetString(buffer, 0, read).Contains("pong");
                     }
                 }
             }
@@ -255,14 +256,7 @@ namespace UploadClient
             try
             {
                 Task connectTask = client.ConnectAsync(ip, port);
-                Task timeoutTask = Task.Delay(timeoutMs);
-
-                Task completedTask = await Task.WhenAny(connectTask, timeoutTask);
-
-                if (completedTask != connectTask)
-                {
-                    return false;
-                }
+                if (await Task.WhenAny(connectTask, Task.Delay(timeoutMs)) != connectTask) return false;
 
                 await connectTask;
                 return client.Connected;
@@ -273,54 +267,75 @@ namespace UploadClient
             }
         }
 
+        private Task WriteAsync(NetworkStream stream, byte[] data, CancellationToken token)
+        {
+            return stream.WriteAsync(data, 0, data.Length, token);
+        }
+
+        private bool TryGetServerInfo(out string ip, out int port)
+        {
+            ip = txtIP.Text.Trim();
+            port = 0;
+
+            if (string.IsNullOrWhiteSpace(ip))
+            {
+                MessageBox.Show("Vui lòng nhập Server IP!");
+                return false;
+            }
+
+            if (!int.TryParse(txtPort.Text.Trim(), out port) || port < 0 || port > 65535)
+            {
+                MessageBox.Show("Port chỉ được nhập số nguyên từ 0 đến 65535!");
+                return false;
+            }
+
+            return true;
+        }
+
+
+        private string GetLocalIPv4()
+        {
+            foreach (NetworkInterface network in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (network.OperationalStatus != OperationalStatus.Up) continue;
+                if (network.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                if (network.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
+
+                foreach (UnicastIPAddressInformation address in network.GetIPProperties().UnicastAddresses)
+                {
+                    if (address.Address.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        return address.Address.ToString();
+                    }
+                }
+            }
+
+            return "127.0.0.1";
+        }
+
         private void StartServerMonitor(string ip, int port)
         {
             StopServerMonitor();
-
             monitorCts = new CancellationTokenSource();
             CancellationToken token = monitorCts.Token;
 
-            _ = Task.Run(async () =>
+            Task.Run(async () =>
             {
                 while (!token.IsCancellationRequested)
                 {
                     try
                     {
                         await Task.Delay(2000, token);
+                        if (!isConnected) break;
 
-                        if (token.IsCancellationRequested)
+                        if (!await PingServerAsync(ip, port, 1500))
                         {
+                            Dispatcher.Invoke(HandleServerStopped);
                             break;
                         }
-
-                        if (!isConnected)
-                        {
-                            break;
-                        }
-
-                        bool ok = await PingServerAsync(ip, port, 1500);
-
-                        if (!ok)
-                        {
-                            Dispatcher.Invoke(() =>
-                            {
-                                HandleServerStopped();
-                            });
-
-                            break;
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
                     }
                     catch
                     {
-                        Dispatcher.Invoke(() =>
-                        {
-                            HandleServerStopped();
-                        });
-
                         break;
                     }
                 }
@@ -329,37 +344,62 @@ namespace UploadClient
 
         private void StopServerMonitor()
         {
-            try
-            {
-                if (monitorCts != null)
-                {
-                    monitorCts.Cancel();
-                    monitorCts.Dispose();
-                    monitorCts = null;
-                }
-            }
-            catch
-            {
-                // Bỏ qua lỗi khi dừng monitor
-            }
+            if (monitorCts == null) return;
+
+            monitorCts.Cancel();
+            monitorCts.Dispose();
+            monitorCts = null;
         }
 
         private void HandleServerStopped()
         {
-            if (!isConnected)
+            if (isConnected)
             {
-                return;
+                DisconnectClient("Server đã Stop hoặc mất kết nối. Client tự động ngắt.\n");
             }
-
-            DisconnectClient("Server đã Stop hoặc mất kết nối. Client tự động ngắt kết nối.\n");
         }
 
-        private void DisconnectClient(string logMessage)
+        private void DisconnectClient(string message)
         {
             StopServerMonitor();
-
+            CancelUpload();
             SetConnectionState(false);
-            AppendLog(logMessage);
+            AppendLog(message);
+        }
+
+        private void CancelUpload()
+        {
+            try
+            {
+                if (uploadCts != null && !uploadCts.IsCancellationRequested)
+                {
+                    uploadCts.Cancel();
+                }
+
+                CloseUploadConnection();
+            }
+            catch { }
+        }
+
+        private void CloseUploadConnection()
+        {
+            try
+            {
+                if (uploadClient != null)
+                {
+                    uploadClient.Close();
+                    uploadClient = null;
+                }
+            }
+            catch { }
+        }
+
+        private bool IsUploadCanceled(Exception ex)
+        {
+            bool userCanceled = uploadCts != null && uploadCts.IsCancellationRequested;
+
+            return ex is OperationCanceledException ||
+                   userCanceled && (ex is ObjectDisposedException || ex is IOException || ex is SocketException);
         }
 
         private void SetConnectionState(bool connected)
@@ -368,26 +408,22 @@ namespace UploadClient
 
             btnConnect.IsEnabled = !connected;
             btnDisconnect.IsEnabled = connected;
-
-            btnSelectFile.IsEnabled = connected;
-            btnUpload.IsEnabled = connected && File.Exists(selectedFilePath);
-
             txtIP.IsEnabled = !connected;
             txtPort.IsEnabled = !connected;
 
-            if (connected)
-            {
-                lblStatus.Text = "Connected";
-                lblStatus.Foreground = Brushes.Green;
-            }
-            else
-            {
-                lblStatus.Text = "Disconnected";
-                lblStatus.Foreground = Brushes.Red;
+            lblStatus.Text = connected ? "Connected" : "Disconnected";
+            lblStatus.Foreground = connected ? Brushes.Green : Brushes.Red;
 
-                btnSelectFile.IsEnabled = false;
-                btnUpload.IsEnabled = false;
-            }
+            SetButtonState();
+        }
+
+        private void SetButtonState()
+        {
+            bool hasFile = fileList.Count > 0;
+
+            btnSelectFile.IsEnabled = isConnected && !isUploading;
+            btnClearList.IsEnabled = isConnected && !isUploading && hasFile;
+            btnUpload.IsEnabled = isConnected && !isUploading && hasFile;
         }
 
         private void SetProgress(double value)
@@ -398,16 +434,7 @@ namespace UploadClient
                 return;
             }
 
-            if (value < 0)
-            {
-                value = 0;
-            }
-
-            if (value > 100)
-            {
-                value = 100;
-            }
-
+            value = Math.Max(0, Math.Min(100, value));
             progressUpload.Value = value;
             lblProgress.Text = $"{value:0}%";
         }
@@ -424,34 +451,42 @@ namespace UploadClient
             txtLog.ScrollToEnd();
         }
 
-        private string FormatFileSize(long bytes)
+        private void txtPort_PreviewTextInput(object sender, TextCompositionEventArgs e)
         {
-            if (bytes < 1024)
+            e.Handled = !IsValidPortText(GetNewPortText((TextBox)sender, e.Text));
+        }
+
+        private void txtPort_Paste(object sender, DataObjectPastingEventArgs e)
+        {
+            if (!e.DataObject.GetDataPresent(typeof(string)))
             {
-                return bytes + " B";
+                e.CancelCommand();
+                return;
             }
 
-            double kb = bytes / 1024.0;
+            string pasteText = e.DataObject.GetData(typeof(string)) as string;
+            if (!IsValidPortText(GetNewPortText(txtPort, pasteText))) e.CancelCommand();
+        }
 
-            if (kb < 1024)
-            {
-                return kb.ToString("0.00") + " KB";
-            }
+        private string GetNewPortText(TextBox box, string input)
+        {
+            string text = box.Text.Remove(box.SelectionStart, box.SelectionLength);
+            return text.Insert(box.SelectionStart, input ?? "");
+        }
 
-            double mb = kb / 1024.0;
-
-            if (mb < 1024)
-            {
-                return mb.ToString("0.00") + " MB";
-            }
-
-            double gb = mb / 1024.0;
-            return gb.ToString("0.00") + " GB";
+        private bool IsValidPortText(string text)
+        {
+            int port;
+            return text == "" ||
+                   text.Length <= 5 &&
+                   int.TryParse(text, out port) &&
+                   port >= 0 &&
+                   port <= 65535;
         }
 
         protected override void OnClosed(EventArgs e)
         {
-            StopServerMonitor();
+            DisconnectClient("Đã đóng Client.\n");
             base.OnClosed(e);
         }
     }

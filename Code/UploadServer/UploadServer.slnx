@@ -1,4 +1,4 @@
 <Solution>
-  <Project Path="../UploadClient/UploadClient.csproj" Id="7b4488cc-de86-4738-b13a-298649a942d9" />
+  <Project Path="../UploadClient/UploadClient.csproj" Id="a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d" />
   <Project Path="UploadServer.csproj" Id="e800ebf6-9cae-43e6-a970-d18e260ac878" />
 </Solution>

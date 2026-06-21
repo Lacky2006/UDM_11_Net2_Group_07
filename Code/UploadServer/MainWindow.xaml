@@ -147,10 +147,32 @@
 
                 <!-- Activity Log -->
                 <Border Grid.Column="0" CornerRadius="8" Padding="10" Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                    <StackPanel>
-                        <TextBlock Text="Activity Log" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
-                        <TextBox x:Name="txtLog" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="13" Background="{DynamicResource SurfaceBrush}" BorderThickness="0" Height="180" Foreground="{DynamicResource LogForegroundBrush}" />
-                    </StackPanel>
+                    <!-- Use Grid so the TextBox can stretch to fill available space and avoid clipping -->
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="Activity Log" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Grid.Row="0" />
+
+                        <TextBox x:Name="txtLog"
+                                 Grid.Row="1"
+                                 IsReadOnly="True"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 FontFamily="Consolas"
+                                 FontSize="14"
+                                 Background="{DynamicResource LogBackgroundBrush}"
+                                 BorderThickness="0"
+                                 Foreground="{DynamicResource LogForegroundBrush}"
+                                 Padding="8,8,8,16"
+                                 VerticalContentAlignment="Top"
+                                 VerticalAlignment="Stretch"
+                                 HorizontalAlignment="Stretch" />
+                    </Grid>
                 </Border>
 
                 <!-- Statistics Dashboard (2x2 cards) -->

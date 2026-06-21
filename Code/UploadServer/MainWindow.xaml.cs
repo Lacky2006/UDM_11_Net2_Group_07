@@ -12,6 +12,7 @@ namespace UploadServer
     {
         private TcpListener listener;
         private bool isRunning = false;
+        // Log auto-scroll support (simplified)
 
         public MainWindow()
         {
@@ -19,6 +20,8 @@ namespace UploadServer
 
             btnStart.IsEnabled = true;
             btnStop.IsEnabled = false;
+
+            // No complex scroll setup; rely on caret + ScrollToEnd in AppendLog
         }
 
         private async void btnStart_Click(object sender, RoutedEventArgs e)
@@ -402,8 +405,11 @@ namespace UploadServer
             }
 
             txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}");
+            // Move caret to end and ensure the latest text is visible
+            txtLog.CaretIndex = txtLog.Text.Length;
             txtLog.ScrollToEnd();
         }
+        // Removed complex ScrollViewer-based auto-scroll logic to use simple caret + ScrollToEnd
 
         protected override void OnClosed(EventArgs e)
         {

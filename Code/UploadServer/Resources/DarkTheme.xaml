@@ -34,7 +34,8 @@
     <SolidColorBrush x:Key="InputBackgroundBrush" Color="{StaticResource ColorInputBg}" />
     <SolidColorBrush x:Key="InputForegroundBrush" Color="{StaticResource ColorInputFg}" />
     <SolidColorBrush x:Key="InputBorderBrush" Color="{StaticResource ColorInputBorder}" />
-    <SolidColorBrush x:Key="LogForegroundBrush" Color="{StaticResource ColorInputFg}" />
+    <SolidColorBrush x:Key="LogForegroundBrush" Color="#FFE8E8E8" />
+    <SolidColorBrush x:Key="LogBackgroundBrush" Color="#FF1E1E1E" />
     <SolidColorBrush x:Key="DataGridForegroundBrush" Color="{StaticResource ColorInputFg}" />
 
     <!-- Button styles -->

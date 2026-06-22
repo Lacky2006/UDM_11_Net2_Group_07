@@ -1,6 +1,7 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
@@ -34,6 +35,31 @@ namespace UploadClient
             DataObject.AddPastingHandler(txtPort, txtPort_Paste);
             SetConnectionState(false);
             SetProgress(0);
+        }
+
+        private void Window_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                string[] droppedFiles = (string[])e.Data.GetData(DataFormats.FileDrop);
+                int added = 0;
+
+                foreach (string file in droppedFiles)
+                {
+                    if (File.Exists(file) && !fileList.Contains(file))
+                    {
+                        fileList.Add(file);
+                        added++;
+                    }
+                }
+
+                if (added > 0)
+                {
+                    SetProgress(0);
+                    AppendLog($"Đã thêm {added} file từ thao tác kéo thả.\n");
+                    SetButtonState();
+                }
+            }
         }
 
         private async void btnConnect_Click(object sender, RoutedEventArgs e)
@@ -132,6 +158,7 @@ namespace UploadClient
 
                     AppendLog($"Upload {i + 1}/{files.Length}: {Path.GetFileName(files[i])}\n");
                     await UploadOneFileAsync(ip, port, files[i], uploadCts.Token);
+
                     SetProgress(100);
                     AppendLog("Upload xong: " + Path.GetFileName(files[i]) + "\n");
                 }
@@ -198,6 +225,9 @@ namespace UploadClient
                     long sent = 0;
                     SetProgress(0);
 
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    Stopwatch uiUpdateTimer = Stopwatch.StartNew();
+
                     while (sent < file.Length)
                     {
                         token.ThrowIfCancellationRequested();
@@ -208,11 +238,25 @@ namespace UploadClient
                         await stream.WriteAsync(buffer, 0, read, token);
                         sent += read;
 
-                        double percent = file.Length == 0 ? 100 : sent * 100.0 / file.Length;
-                        SetProgress(percent);
+                        if (uiUpdateTimer.ElapsedMilliseconds > 500 || sent == file.Length)
+                        {
+                            double percent = file.Length == 0 ? 100 : sent * 100.0 / file.Length;
+
+                            double speedBps = sent / stopwatch.Elapsed.TotalSeconds;
+                            double speedMbps = speedBps / (1024 * 1024);
+
+                            long remainingBytes = file.Length - sent;
+                            double etaSeconds = speedBps > 0 ? remainingBytes / speedBps : 0;
+                            TimeSpan eta = TimeSpan.FromSeconds(etaSeconds);
+
+                            SetProgress(percent, speedMbps, eta);
+
+                            uiUpdateTimer.Restart();
+                        }
                     }
 
                     await stream.FlushAsync(token);
+                    stopwatch.Stop();
                 }
             }
             finally
@@ -291,7 +335,6 @@ namespace UploadClient
 
             return true;
         }
-
 
         private string GetLocalIPv4()
         {
@@ -426,17 +469,25 @@ namespace UploadClient
             btnUpload.IsEnabled = isConnected && !isUploading && hasFile;
         }
 
-        private void SetProgress(double value)
+        private void SetProgress(double value, double speedMbps = 0, TimeSpan? eta = null)
         {
             if (!Dispatcher.CheckAccess())
             {
-                Dispatcher.Invoke(() => SetProgress(value));
+                Dispatcher.Invoke(() => SetProgress(value, speedMbps, eta));
                 return;
             }
 
             value = Math.Max(0, Math.Min(100, value));
             progressUpload.Value = value;
-            lblProgress.Text = $"{value:0}%";
+
+            if (eta.HasValue && speedMbps > 0)
+            {
+                lblProgress.Text = $"{value:0}% | {speedMbps:F1} MB/s | ETA: {eta.Value:mm\\:ss}";
+            }
+            else
+            {
+                lblProgress.Text = $"{value:0}%";
+            }
         }
 
         private void AppendLog(string message)

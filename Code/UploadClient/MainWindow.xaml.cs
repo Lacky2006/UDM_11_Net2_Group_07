@@ -1,5 +1,6 @@
 ﻿using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -22,7 +23,12 @@ namespace UploadClient
 
         private bool isConnected = false;
         private bool isUploading = false;
-        private TcpClient uploadClient;
+
+        // Danh sách các kết nối TCP đang upload song song (mỗi file 1 TcpClient riêng).
+        // Cần lock vì nhiều luồng (mỗi file 1 Task) cùng add/remove/đóng list này.
+        private readonly List<TcpClient> uploadClients = new List<TcpClient>();
+        private readonly object uploadClientsLock = new object();
+
         private CancellationTokenSource monitorCts;
         private CancellationTokenSource uploadCts;
         private readonly ObservableCollection<string> fileList = new ObservableCollection<string>();
@@ -144,25 +150,66 @@ namespace UploadClient
 
             try
             {
-                string[] files = fileList.ToArray();
-
-                for (int i = 0; i < files.Length; i++)
+                string[] files = fileList.Where(File.Exists).ToArray();
+                int skipped = fileList.Count - files.Length;
+                if (skipped > 0)
                 {
-                    uploadCts.Token.ThrowIfCancellationRequested();
-
-                    if (!File.Exists(files[i]))
-                    {
-                        AppendLog("Bỏ qua file không tồn tại: " + files[i] + "\n");
-                        continue;
-                    }
-
-                    AppendLog($"Upload {i + 1}/{files.Length}: {Path.GetFileName(files[i])}\n");
-                    await UploadOneFileAsync(ip, port, files[i], uploadCts.Token);
-
-                    SetProgress(100);
-                    AppendLog("Upload xong: " + Path.GetFileName(files[i]) + "\n");
+                    AppendLog($"Bỏ qua {skipped} file không tồn tại.\n");
                 }
 
+                if (files.Length == 0)
+                {
+                    AppendLog("Không có file hợp lệ để upload.\n");
+                    return;
+                }
+
+                // Tổng dung lượng của TẤT CẢ file -> dùng để tính % chung cho toàn bộ lượt upload.
+                long totalBytesToSend = files.Sum(f => new FileInfo(f).Length);
+                long totalBytesSent = 0;
+
+                SetProgress(0);
+                AppendLog($"Bắt đầu upload song song {files.Length} file...\n");
+
+                Stopwatch overallStopwatch = Stopwatch.StartNew();
+                Stopwatch uiUpdateTimer = Stopwatch.StartNew();
+                object progressLock = new object();
+
+                // Callback được gọi từ NHIỀU luồng khác nhau (mỗi file 1 luồng upload song song)
+                // mỗi khi 1 file gửi xong 1 khối dữ liệu (chunk).
+                void OnChunkSent(long bytesDelta)
+                {
+                    // Interlocked.Add: cộng dồn an toàn dù nhiều luồng cùng gọi đồng thời (race condition).
+                    long sent = Interlocked.Add(ref totalBytesSent, bytesDelta);
+
+                    bool shouldUpdateUi;
+                    lock (progressLock)
+                    {
+                        shouldUpdateUi = uiUpdateTimer.ElapsedMilliseconds > 500 || sent >= totalBytesToSend;
+                        if (shouldUpdateUi) uiUpdateTimer.Restart();
+                    }
+
+                    if (shouldUpdateUi)
+                    {
+                        double percent = totalBytesToSend == 0 ? 100 : sent * 100.0 / totalBytesToSend;
+
+                        double speedBps = sent / overallStopwatch.Elapsed.TotalSeconds;
+                        double speedMbps = speedBps / (1024 * 1024);
+
+                        long remainingBytes = totalBytesToSend - sent;
+                        double etaSeconds = speedBps > 0 ? remainingBytes / speedBps : 0;
+
+                        SetProgress(percent, speedMbps, TimeSpan.FromSeconds(etaSeconds));
+                    }
+                }
+
+                // Tạo 1 Task upload cho MỖI file -> tất cả chạy song song, không chờ file trước xong.
+                List<Task> uploadTasks = files.Select(path => UploadFileAndTrackAsync(
+                    ip, port, path, OnChunkSent, uploadCts.Token)).ToList();
+
+                // Chờ TẤT CẢ task hoàn tất. Nếu 1 task lỗi, các task còn lại sẽ bị hủy (xem UploadFileAndTrackAsync).
+                await Task.WhenAll(uploadTasks);
+
+                SetProgress(100);
                 AppendLog("Hoàn tất upload toàn bộ danh sách.\n");
             }
             catch (Exception ex) when (IsUploadCanceled(ex))
@@ -185,7 +232,7 @@ namespace UploadClient
             }
             finally
             {
-                CloseUploadConnection();
+                CloseUploadConnections();
 
                 if (uploadCts != null)
                 {
@@ -198,11 +245,33 @@ namespace UploadClient
             }
         }
 
-        private async Task UploadOneFileAsync(string ip, int port, string path, CancellationToken token)
+        /// <summary>
+        /// Bọc UploadOneFileAsync: nếu 1 file lỗi, hủy luôn các file khác đang upload song song
+        /// (để tránh các luồng còn lại tiếp tục chạy "mồ côi" sau khi đã báo lỗi tổng).
+        /// </summary>
+        private async Task UploadFileAndTrackAsync(string ip, int port, string path, Action<long> onBytesSent, CancellationToken token)
+        {
+            try
+            {
+                await UploadOneFileAsync(ip, port, path, onBytesSent, token);
+            }
+            catch
+            {
+                try { uploadCts?.Cancel(); } catch { }
+                throw;
+            }
+        }
+
+        private async Task UploadOneFileAsync(string ip, int port, string path, Action<long> onBytesSent, CancellationToken token)
         {
             FileInfo file = new FileInfo(path);
             TcpClient client = new TcpClient();
-            uploadClient = client;
+
+            // Nhiều file (nhiều luồng) cùng thêm/xóa khỏi list này -> phải lock để tránh lỗi dữ liệu.
+            lock (uploadClientsLock)
+            {
+                uploadClients.Add(client);
+            }
 
             try
             {
@@ -210,6 +279,8 @@ namespace UploadClient
                 {
                     throw new IOException("Không kết nối được tới Server.");
                 }
+
+                AppendLog("Đang upload: " + file.Name + "\n");
 
                 using (NetworkStream stream = client.GetStream())
                 using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, true))
@@ -223,10 +294,6 @@ namespace UploadClient
 
                     byte[] buffer = new byte[BufferSize];
                     long sent = 0;
-                    SetProgress(0);
-
-                    Stopwatch stopwatch = Stopwatch.StartNew();
-                    Stopwatch uiUpdateTimer = Stopwatch.StartNew();
 
                     while (sent < file.Length)
                     {
@@ -238,30 +305,20 @@ namespace UploadClient
                         await stream.WriteAsync(buffer, 0, read, token);
                         sent += read;
 
-                        if (uiUpdateTimer.ElapsedMilliseconds > 500 || sent == file.Length)
-                        {
-                            double percent = file.Length == 0 ? 100 : sent * 100.0 / file.Length;
-
-                            double speedBps = sent / stopwatch.Elapsed.TotalSeconds;
-                            double speedMbps = speedBps / (1024 * 1024);
-
-                            long remainingBytes = file.Length - sent;
-                            double etaSeconds = speedBps > 0 ? remainingBytes / speedBps : 0;
-                            TimeSpan eta = TimeSpan.FromSeconds(etaSeconds);
-
-                            SetProgress(percent, speedMbps, eta);
-
-                            uiUpdateTimer.Restart();
-                        }
+                        onBytesSent(read);
                     }
 
                     await stream.FlushAsync(token);
-                    stopwatch.Stop();
                 }
+
+                AppendLog("Upload xong: " + file.Name + "\n");
             }
             finally
             {
-                if (uploadClient == client) uploadClient = null;
+                lock (uploadClientsLock)
+                {
+                    uploadClients.Remove(client);
+                }
                 client.Close();
             }
         }
@@ -419,22 +476,24 @@ namespace UploadClient
                     uploadCts.Cancel();
                 }
 
-                CloseUploadConnection();
+                CloseUploadConnections();
             }
             catch { }
         }
 
-        private void CloseUploadConnection()
+        /// <summary>
+        /// Đóng toàn bộ kết nối TCP đang upload song song (nếu có nhiều file đang chạy cùng lúc).
+        /// </summary>
+        private void CloseUploadConnections()
         {
-            try
+            lock (uploadClientsLock)
             {
-                if (uploadClient != null)
+                foreach (TcpClient c in uploadClients)
                 {
-                    uploadClient.Close();
-                    uploadClient = null;
+                    try { c.Close(); } catch { }
                 }
+                uploadClients.Clear();
             }
-            catch { }
         }
 
         private bool IsUploadCanceled(Exception ex)

@@ -5,7 +5,7 @@
         Height="660"
         Width="820"
         WindowStartupLocation="CenterScreen"
-        Background="#FFFFFF"
+        Background="#F4F6F8"
         AllowDrop="True"
         Drop="Window_Drop">
 
@@ -19,112 +19,89 @@
 		</Grid.RowDefinitions>
 
 		<TextBlock Text="UPLOAD CLIENT"
-				   FontSize="24"
-				   FontWeight="Bold"
-				   Foreground="#2C3E50"
-				   Margin="0,0,0,20"
-				   FontFamily="Segoe UI"/>
+                   FontSize="24"
+                   FontWeight="Bold"
+                   Foreground="#2C3E50"
+                   Margin="0,0,0,20"/>
 
 		<Border Grid.Row="1"
-				Background="#F8F9FA"
-				CornerRadius="8"
-				Padding="15"
-				Margin="0,0,0,15"
-				BorderBrush="#D1D5DB"
-				BorderThickness="1">
+                Background="White"
+                CornerRadius="8"
+                Padding="15"
+                Margin="0,0,0,15"
+                BorderBrush="#DADDE1"
+                BorderThickness="1">
 
 			<StackPanel>
 				<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 					<TextBlock Text="Server IP:"
-								   FontSize="15"
-								   VerticalAlignment="Center"
-								   Margin="0,0,8,0"
-								   FontFamily="Segoe UI"/>
+                               FontSize="15"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0"/>
 
 					<TextBox x:Name="txtIP"
-								 Width="150"
-								 Height="34"
-								 Text="127.0.0.1"
-								 ToolTip="Ứng dụng tự lấy IPv4 của máy. Nếu Server ở máy khác, hãy nhập IP của máy Server."
-								 FontSize="14"
-								 FontFamily="Segoe UI"
-								 VerticalContentAlignment="Center"
-								 Margin="0,0,15,0"
-								 Padding="8,6"
-								 BorderBrush="#D1D5DB"
-								 BorderThickness="1"/>
+                             Width="150"
+                             Height="34"
+                             Text="127.0.0.1"
+                             ToolTip="Ứng dụng tự lấy IPv4 của máy. Nếu Server ở máy khác, hãy nhập IP của máy Server."
+                             FontSize="14"
+                             VerticalContentAlignment="Center"
+                             Margin="0,0,15,0"/>
 
 					<TextBlock Text="Port:"
-								   FontSize="15"
-								   VerticalAlignment="Center"
-								   Margin="0,0,8,0"
-								   FontFamily="Segoe UI"/>
+                               FontSize="15"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0"/>
 
 					<TextBox x:Name="txtPort"
-								 Width="90"
-								 Height="34"
-								 Text="9000"
-								 MaxLength="5"
-								 FontSize="14"
-								 FontFamily="Segoe UI"
-								 VerticalContentAlignment="Center"
-								 PreviewTextInput="txtPort_PreviewTextInput"
-								 Margin="0,0,15,0"
-								 Padding="8,6"
-								 BorderBrush="#D1D5DB"
-								 BorderThickness="1"/>
+                             Width="90"
+                             Height="34"
+                             Text="9000"
+                             MaxLength="5"
+                             FontSize="14"
+                             VerticalContentAlignment="Center"
+                             PreviewTextInput="txtPort_PreviewTextInput"
+                             Margin="0,0,15,0"/>
 
 					<Button x:Name="btnConnect"
-								Content="Connect"
-								Width="110"
-								Height="36"
-								FontSize="13"
-								FontFamily="Segoe UI"
-								Margin="0,0,8,0"
-								Click="btnConnect_Click"
-								Background="#2563EB"
-								Foreground="White"
-								Padding="12,8"
-								BorderThickness="0"/>
+                            Content="Connect"
+                            Width="110"
+                            Height="34"
+                            FontSize="14"
+                            Margin="0,0,8,0"
+                            Click="btnConnect_Click"/>
 
 					<Button x:Name="btnDisconnect"
-								Content="Disconnect"
-								Width="120"
-								Height="36"
-								FontSize="13"
-								FontFamily="Segoe UI"
-								Click="btnDisconnect_Click"
-								Background="#E5E7EB"
-								Foreground="#374151"
-								Padding="12,8"
-								BorderThickness="0"/>
+                            Content="Disconnect"
+                            Width="120"
+                            Height="34"
+                            FontSize="14"
+                            Click="btnDisconnect_Click"/>
 				</StackPanel>
 
 				<StackPanel Orientation="Horizontal" Margin="0,12,0,0">
 					<TextBlock Text="Status:"
-							   FontSize="15"
-							   VerticalAlignment="Center"
-							   Margin="0,0,8,0"
-							   FontFamily="Segoe UI"/>
+                               FontSize="15"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0"/>
 
 					<TextBlock x:Name="lblStatus"
-							   Text="Disconnected"
-							   FontSize="15"
-							   FontWeight="Bold"
-							   Foreground="#EF4444"
-							   VerticalAlignment="Center"
-							   FontFamily="Segoe UI"/>
+                               Text="Disconnected"
+                               FontSize="15"
+                               FontWeight="Bold"
+                               Foreground="Red"
+                               VerticalAlignment="Center"/>
 				</StackPanel>
 			</StackPanel>
 		</Border>
 
 		<Border Grid.Row="2"
-				Background="#F8F9FA"
-				CornerRadius="8"
-				Padding="15"
-				Margin="0,0,0,15"
-				BorderBrush="#D1D5DB"
-				BorderThickness="1">
+                Background="White"
+                CornerRadius="8"
+                Padding="15"
+                Margin="0,0,0,15"
+                BorderBrush="#DADDE1"
+                BorderThickness="1">
 
 			<Grid>
 				<Grid.RowDefinitions>
@@ -136,42 +113,27 @@
 
 				<StackPanel Orientation="Horizontal">
 					<Button x:Name="btnSelectFile"
-								Content="Select Files"
-								Width="120"
-								Height="38"
-								FontSize="13"
-								FontFamily="Segoe UI"
-								Margin="0,0,10,0"
-								Click="btnSelectFile_Click"
-								Background="#2563EB"
-								Foreground="White"
-								Padding="12,8"
-								BorderThickness="0"/>
+                            Content="Select Files"
+                            Width="120"
+                            Height="35"
+                            FontSize="14"
+                            Margin="0,0,10,0"
+                            Click="btnSelectFile_Click"/>
 
 					<Button x:Name="btnUpload"
-								Content="Upload All"
-								Width="130"
-								Height="38"
-								FontSize="13"
-								FontFamily="Segoe UI"
-								Margin="0,0,10,0"
-								Click="btnUpload_Click"
-								Background="#2563EB"
-								Foreground="White"
-								Padding="12,8"
-								BorderThickness="0"/>
+                            Content="Upload All"
+                            Width="120"
+                            Height="35"
+                            FontSize="14"
+                            Margin="0,0,10,0"
+                            Click="btnUpload_Click"/>
 
 					<Button x:Name="btnClearList"
-								Content="Clear List"
-								Width="110"
-								Height="38"
-								FontSize="13"
-								FontFamily="Segoe UI"
-								Click="btnClearList_Click"
-								Background="#E5E7EB"
-								Foreground="#374151"
-								Padding="12,8"
-								BorderThickness="0"/>
+                            Content="Clear List"
+                            Width="110"
+                            Height="35"
+                            FontSize="14"
+                            Click="btnClearList_Click"/>
 				</StackPanel>
 
 				<!-- Ô kéo-thả file riêng biệt -->
@@ -219,7 +181,7 @@
                 CornerRadius="8"
                 Padding="15"
                 Margin="0,0,0,15"
-                BorderBrush="#D1D5DB"
+                BorderBrush="#DADDE1"
                 BorderThickness="1">
 
 			<Grid>
@@ -238,7 +200,6 @@
                            Text="0%"
                            FontSize="15"
                            FontWeight="Bold"
-                           FontFamily="Segoe UI"
                            HorizontalAlignment="Right"
                            VerticalAlignment="Center"/>
 			</Grid>
@@ -252,16 +213,14 @@
                 BorderThickness="1">
 
 			<TextBox x:Name="txtLog"
-					 IsReadOnly="True"
-					 AcceptsReturn="True"
-					 TextWrapping="Wrap"
-					 VerticalScrollBarVisibility="Auto"
-					 HorizontalScrollBarVisibility="Auto"
-					 FontFamily="Consolas"
-					 FontSize="13"
-					 Background="White"
-					 BorderThickness="0"
-					 Padding="8"/>
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto"
+                     FontFamily="Consolas"
+                     FontSize="14"
+                     Background="#FAFAFA"/>
 		</Border>
 	</Grid>
 </Window>

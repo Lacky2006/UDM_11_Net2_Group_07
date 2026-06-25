@@ -6,7 +6,6 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -19,38 +18,15 @@ namespace UploadServer
         private bool isRunning;
         private const int BufferSize = 64 * 1024;
 
-        // Statistics tracking
-        private int connectedClientsCount;
-        private int receivedFilesCount;
-        private long totalReceivedSize;
-        private long activeConnections;
-
         public MainWindow()
         {
             InitializeComponent();
 
             txtIP.Text = GetLocalIPv4();
             SetServerState(false);
-            UpdateStatisticsUI();
 
             DataObject.AddPastingHandler(txtPort, txtPort_Paste);
-        }
-
-        private void UpdateStatisticsUI()
-        {
-            if (!Dispatcher.CheckAccess())
-            {
-                Dispatcher.Invoke(() => UpdateStatisticsUI());
-                return;
-            }
-
-            txtConnectedClientsCount.Text = Interlocked.Read(ref activeConnections).ToString();
-            txtReceivedFilesCount.Text = receivedFilesCount.ToString();
-            txtTotalReceivedSize.Text = FormatSize(totalReceivedSize);
-            txtServerStatus.Text = isRunning ? "Running" : "Stopped";
-            txtServerStatus.Foreground = isRunning ? 
-                new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(255, 16, 185, 129)) : // Green
-                new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(255, 239, 68, 68)); // Red
+            Log("IP máy hiện tại: " + txtIP.Text + "\n");
         }
 
         private async void btnStart_Click(object sender, RoutedEventArgs e)
@@ -68,12 +44,12 @@ namespace UploadServer
                 int realPort = ((IPEndPoint)listener.LocalEndpoint).Port;
                 txtPort.Text = realPort.ToString();
 
-                UpdateStatisticsUI();
-                Log($"Server started at {ip}:{realPort}");
+                Log($"Server đã chạy tại {ip}:{realPort}\n");
                 await AcceptClientsAsync();
             }
             catch (Exception ex)
             {
+                if (isRunning) Log("Lỗi Server: " + ex.Message + "\n");
                 StopServer();
             }
         }
@@ -93,10 +69,12 @@ namespace UploadServer
                 }
                 catch (SocketException)
                 {
+                    if (isRunning) Log("Socket đã dừng khi chờ Client kết nối.\n");
                     break;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    if (isRunning) Log("Lỗi nhận Client: " + ex.Message + "\n");
                 }
             }
         }
@@ -104,9 +82,6 @@ namespace UploadServer
         private async Task HandleClientAsync(TcpClient client)
         {
             string remote = client.Client.RemoteEndPoint?.ToString() ?? "Unknown";
-            Interlocked.Increment(ref activeConnections);
-            UpdateStatisticsUI();
-            Log($"Client connected: {remote}");
 
             try
             {
@@ -116,6 +91,7 @@ namespace UploadServer
                     byte[] commandBytes = await ReadExactAsync(stream, 4);
                     if (commandBytes == null)
                     {
+                        Log($"Client {remote} đã ngắt kết nối.\n");
                         return;
                     }
 
@@ -131,24 +107,27 @@ namespace UploadServer
                     {
                         await ReceiveFileAsync(stream, remote);
                     }
+                    else
+                    {
+                        Log($"Client {remote} gửi lệnh sai: {command}\n");
+                    }
                 }
             }
             catch (IOException)
             {
-                Log($"Client disconnected: {remote}");
+                Log($"Client {remote} đã ngắt kết nối.\n");
             }
             catch (SocketException)
             {
-                Log($"Client disconnected: {remote}");
+                Log($"Client {remote} đã ngắt kết nối.\n");
             }
             catch (ObjectDisposedException)
             {
-                Log($"Client disconnected: {remote}");
+                Log($"Client {remote} đã đóng kết nối.\n");
             }
-            finally
+            catch (Exception ex)
             {
-                Interlocked.Decrement(ref activeConnections);
-                UpdateStatisticsUI();
+                Log($"Lỗi xử lý Client {remote}: {ex.Message}\n");
             }
         }
 
@@ -156,24 +135,23 @@ namespace UploadServer
         {
             string savePath = null;
             string fileName = "Unknown";
-            long fileSize = 0;
 
             try
             {
-                byte[] nameLengthBytes = await ReadExactOrThrowAsync(stream, 4, "Client interrupted while sending file name length.");
+                byte[] nameLengthBytes = await ReadExactOrThrowAsync(stream, 4, "Client ngắt khi gửi độ dài tên file.");
                 int nameLength = BitConverter.ToInt32(nameLengthBytes, 0);
 
                 if (nameLength <= 0 || nameLength > 1024)
-                    throw new InvalidDataException("Invalid file name length.");
+                    throw new InvalidDataException("Độ dài tên file không hợp lệ.");
 
-                byte[] nameBytes = await ReadExactOrThrowAsync(stream, nameLength, "Client interrupted while sending file name.");
+                byte[] nameBytes = await ReadExactOrThrowAsync(stream, nameLength, "Client ngắt khi gửi tên file.");
                 fileName = Path.GetFileName(Encoding.UTF8.GetString(nameBytes));
 
-                byte[] sizeBytes = await ReadExactOrThrowAsync(stream, 8, "Client interrupted while sending file size.");
-                fileSize = BitConverter.ToInt64(sizeBytes, 0);
+                byte[] sizeBytes = await ReadExactOrThrowAsync(stream, 8, "Client ngắt khi gửi dung lượng file.");
+                long fileSize = BitConverter.ToInt64(sizeBytes, 0);
 
                 if (fileSize < 0)
-                    throw new InvalidDataException("Invalid file size.");
+                    throw new InvalidDataException("Dung lượng file không hợp lệ.");
 
                 string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Uploads");
                 Directory.CreateDirectory(folder);
@@ -182,10 +160,10 @@ namespace UploadServer
 
                 // Chỉ log 1 dòng khi BẮT ĐẦU nhận file (không log % tiến trình liên tục nữa).
                 Log($"Đang tải: {fileName} ({FormatSize(fileSize)}) từ Client {remote}\n");
-                Log($"Receiving file from {remote}: {fileName}");
 
                 byte[] buffer = new byte[BufferSize];
                 long received = 0;
+                byte[] serverHash;
 
                 using (IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
                 {
@@ -198,8 +176,6 @@ namespace UploadServer
 
                             if (read <= 0)
                                 throw new IOException("Client ngắt kết nối khi đang upload.");
-                        if (read <= 0)
-                            throw new IOException("Client interrupted during file upload.");
 
                             await file.WriteAsync(buffer, 0, read);
                             hasher.AppendData(buffer, 0, read);
@@ -227,35 +203,22 @@ namespace UploadServer
                 {
                     DeletePartialFile(savePath);
                     Log($"Thất bại: {fileName} - Checksum SHA-256 KHÔNG khớp, file bị lỗi khi truyền. File đã bị xóa.\n");
-                        await file.WriteAsync(buffer, 0, read);
-                        received += read;
-                    }
                 }
-
-                // Update statistics on successful file reception
-                receivedFilesCount++;
-                Interlocked.Add(ref totalReceivedSize, fileSize);
-                UpdateStatisticsUI();
-
-                Log($"File received successfully: {Path.GetFileName(savePath)} ({FormatSize(fileSize)})");
             }
             catch (InvalidDataException ex)
             {
                 DeletePartialFile(savePath);
                 Log($"Thất bại: {fileName} - dữ liệu upload từ {remote} không hợp lệ ({ex.Message})\n");
-                Log($"Invalid upload data from {remote}: {ex.Message}");
             }
             catch (IOException)
             {
                 DeletePartialFile(savePath);
                 Log($"Thất bại: {fileName} - Client {remote} đã hủy upload. File dở đã bị xóa.\n");
-                Log($"Upload cancelled by {remote}: {fileName}");
             }
             catch (SocketException)
             {
                 DeletePartialFile(savePath);
                 Log($"Thất bại: {fileName} - Client {remote} mất kết nối khi đang upload. File dở đã bị xóa.\n");
-                Log($"Connection lost with {remote} during file upload: {fileName}");
             }
         }
 
@@ -284,7 +247,7 @@ namespace UploadServer
         private void btnStop_Click(object sender, RoutedEventArgs e)
         {
             StopServer();
-            Log("Server stopped");
+            Log("Server đã dừng.\n");
         }
 
         private void StopServer()
@@ -293,7 +256,6 @@ namespace UploadServer
             listener?.Stop();
             listener = null;
             SetServerState(false);
-            UpdateStatisticsUI();
         }
 
         private void SetServerState(bool running)
@@ -416,7 +378,7 @@ namespace UploadServer
                 return;
             }
 
-            txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}\n");
+            txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}");
             txtLog.ScrollToEnd();
         }
 

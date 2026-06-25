@@ -5,87 +5,220 @@
         Height="500"
         Width="800"
         WindowStartupLocation="CenterScreen"
-        Background="#F4F6F8">
+        Background="#FFFFFF">
 
 	<Grid Margin="20">
 		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
 		</Grid.RowDefinitions>
 
 		<TextBlock Text="UPLOAD SERVER"
-                   FontSize="24"
-                   FontWeight="Bold"
-                   Foreground="#2C3E50"
-                   Margin="0,0,0,20"/>
+				   FontSize="24"
+				   FontWeight="Bold"
+				   Foreground="#2C3E50"
+				   Margin="0,0,0,20"
+				   FontFamily="Segoe UI"/>
 
+		<!-- Dashboard Statistics Section -->
 		<Border Grid.Row="1"
-                Background="White"
-                CornerRadius="8"
-                Padding="15"
-                Margin="0,0,0,15"
-                BorderBrush="#DADDE1"
-                BorderThickness="1">
+				Background="#FFFFFF"
+				CornerRadius="8"
+				Padding="12"
+				Margin="0,0,0,15"
+				BorderBrush="#D1D5DB"
+				BorderThickness="1">
 
-			<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-				<TextBlock Text="Server IP:" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+			<Grid>
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*"/>
+					<ColumnDefinition Width="*"/>
+					<ColumnDefinition Width="*"/>
+					<ColumnDefinition Width="*"/>
+				</Grid.ColumnDefinitions>
 
-				<TextBox x:Name="txtIP"
-                         Width="150"
-                         Height="35"
-                         IsReadOnly="True"
-                         Background="#EFEFEF"
-                         FontSize="15"
-                         VerticalContentAlignment="Center"
-                         Margin="0,0,15,0"/>
+				<!-- Connected Clients Card -->
+				<Border Grid.Column="0"
+						Background="#F8F9FA"
+						CornerRadius="6"
+						Padding="12"
+						Margin="0,0,8,0"
+						BorderBrush="#E5E7EB"
+						BorderThickness="1">
+					<StackPanel VerticalAlignment="Center">
+						<TextBlock Text="Connected Clients"
+								   FontSize="12"
+								   Foreground="#6B7280"
+								   FontFamily="Segoe UI"
+								   Margin="0,0,0,6"/>
+						<TextBlock x:Name="txtConnectedClientsCount"
+								   Text="0"
+								   FontSize="20"
+								   FontWeight="Bold"
+								   Foreground="#2563EB"
+								   FontFamily="Segoe UI"/>
+					</StackPanel>
+				</Border>
 
-				<TextBlock Text="Port:" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+				<!-- Received Files Card -->
+				<Border Grid.Column="1"
+						Background="#F8F9FA"
+						CornerRadius="6"
+						Padding="12"
+						Margin="0,0,8,0"
+						BorderBrush="#E5E7EB"
+						BorderThickness="1">
+					<StackPanel VerticalAlignment="Center">
+						<TextBlock Text="Received Files"
+								   FontSize="12"
+								   Foreground="#6B7280"
+								   FontFamily="Segoe UI"
+								   Margin="0,0,0,6"/>
+						<TextBlock x:Name="txtReceivedFilesCount"
+								   Text="0"
+								   FontSize="20"
+								   FontWeight="Bold"
+								   Foreground="#10B981"
+								   FontFamily="Segoe UI"/>
+					</StackPanel>
+				</Border>
 
-				<TextBox x:Name="txtPort"
-                         Width="100"
-                         Height="35"
-                         Text="9000"
-                         MaxLength="5"
-                         FontSize="15"
-                         VerticalContentAlignment="Center"
-                         Margin="0,0,15,0"
-                         PreviewTextInput="txtPort_PreviewTextInput"/>
+				<!-- Total Received Size Card -->
+				<Border Grid.Column="2"
+						Background="#F8F9FA"
+						CornerRadius="6"
+						Padding="12"
+						Margin="0,0,8,0"
+						BorderBrush="#E5E7EB"
+						BorderThickness="1">
+					<StackPanel VerticalAlignment="Center">
+						<TextBlock Text="Total Size"
+								   FontSize="12"
+								   Foreground="#6B7280"
+								   FontFamily="Segoe UI"
+								   Margin="0,0,0,6"/>
+						<TextBlock x:Name="txtTotalReceivedSize"
+								   Text="0 B"
+								   FontSize="20"
+								   FontWeight="Bold"
+								   Foreground="#F59E0B"
+								   FontFamily="Segoe UI"/>
+					</StackPanel>
+				</Border>
 
-				<Button x:Name="btnStart"
-                        Content="Start Server"
-                        Width="130"
-                        Height="35"
-                        FontSize="15"
-                        Margin="0,0,10,0"
-                        Click="btnStart_Click"/>
-
-				<Button x:Name="btnStop"
-                        Content="Stop Server"
-                        Width="130"
-                        Height="35"
-                        FontSize="15"
-                        IsEnabled="False"
-                        Click="btnStop_Click"/>
-			</StackPanel>
+				<!-- Server Status Card -->
+				<Border Grid.Column="3"
+						Background="#F8F9FA"
+						CornerRadius="6"
+						Padding="12"
+						Margin="0,0,0,0"
+						BorderBrush="#E5E7EB"
+						BorderThickness="1">
+					<StackPanel VerticalAlignment="Center">
+						<TextBlock Text="Status"
+								   FontSize="12"
+								   Foreground="#6B7280"
+								   FontFamily="Segoe UI"
+								   Margin="0,0,0,6"/>
+						<TextBlock x:Name="txtServerStatus"
+								   Text="Stopped"
+								   FontSize="20"
+								   FontWeight="Bold"
+								   Foreground="#EF4444"
+								   FontFamily="Segoe UI"/>
+					</StackPanel>
+				</Border>
+			</Grid>
 		</Border>
 
 		<Border Grid.Row="2"
-                Background="White"
-                CornerRadius="8"
-                Padding="10"
-                BorderBrush="#DADDE1"
-                BorderThickness="1">
+				Background="#F8F9FA"
+				CornerRadius="8"
+				Padding="15"
+				Margin="0,0,0,15"
+				BorderBrush="#D1D5DB"
+				BorderThickness="1">
+
+			<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+				<TextBlock Text="Server IP:" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0" FontFamily="Segoe UI"/>
+
+				<TextBox x:Name="txtIP"
+						 Width="150"
+						 Height="35"
+						 IsReadOnly="True"
+						 Background="#E5E7EB"
+						 FontSize="15"
+						 FontFamily="Segoe UI"
+						 VerticalContentAlignment="Center"
+						 Margin="0,0,15,0"
+						 Padding="8,6"
+						 BorderBrush="#D1D5DB"
+						 BorderThickness="1"/>
+
+				<TextBlock Text="Port:" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0" FontFamily="Segoe UI"/>
+
+				<TextBox x:Name="txtPort"
+						 Width="100"
+						 Height="35"
+						 Text="9000"
+						 MaxLength="5"
+						 FontSize="15"
+						 FontFamily="Segoe UI"
+						 VerticalContentAlignment="Center"
+						 Margin="0,0,15,0"
+						 PreviewTextInput="txtPort_PreviewTextInput"
+						 Padding="8,6"
+						 BorderBrush="#D1D5DB"
+						 BorderThickness="1"/>
+
+				<Button x:Name="btnStart"
+						Content="Start Server"
+						Width="140"
+						Height="38"
+						FontSize="13"
+						FontFamily="Segoe UI"
+						Margin="0,0,10,0"
+						Click="btnStart_Click"
+						Background="#2563EB"
+						Foreground="White"
+						Padding="12,8"
+						BorderThickness="0"/>
+
+				<Button x:Name="btnStop"
+						Content="Stop Server"
+						Width="140"
+						Height="38"
+						FontSize="13"
+						FontFamily="Segoe UI"
+						IsEnabled="False"
+						Click="btnStop_Click"
+						Background="#E5E7EB"
+						Foreground="#374151"
+						Padding="12,8"
+						BorderThickness="0"/>
+			</StackPanel>
+		</Border>
+
+		<Border Grid.Row="3"
+				Background="#F8F9FA"
+				CornerRadius="8"
+				Padding="10"
+				BorderBrush="#D1D5DB"
+				BorderThickness="1">
 
 			<TextBox x:Name="txtLog"
-                     IsReadOnly="True"
-                     AcceptsReturn="True"
-                     TextWrapping="Wrap"
-                     VerticalScrollBarVisibility="Auto"
-                     HorizontalScrollBarVisibility="Auto"
-                     FontFamily="Consolas"
-                     FontSize="14"
-                     Background="#FAFAFA"/>
+					 IsReadOnly="True"
+					 AcceptsReturn="True"
+					 TextWrapping="Wrap"
+					 VerticalScrollBarVisibility="Auto"
+					 HorizontalScrollBarVisibility="Auto"
+					 FontFamily="Consolas"
+					 FontSize="13"
+					 Background="White"
+					 BorderThickness="0"
+					 Padding="8"/>
 		</Border>
 	</Grid>
 </Window>

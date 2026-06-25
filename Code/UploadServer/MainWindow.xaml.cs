@@ -1,8 +1,10 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -156,50 +158,67 @@ namespace UploadServer
 
                 savePath = GetUniquePath(Path.Combine(folder, fileName));
 
-                Log($"Client {remote} bắt đầu upload: {fileName} ({FormatSize(fileSize)})\n");
+                // Chỉ log 1 dòng khi BẮT ĐẦU nhận file (không log % tiến trình liên tục nữa).
+                Log($"Đang tải: {fileName} ({FormatSize(fileSize)}) từ Client {remote}\n");
 
                 byte[] buffer = new byte[BufferSize];
                 long received = 0;
-                int lastPercent = -1;
+                byte[] serverHash;
 
-                using (FileStream file = new FileStream(savePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, true))
+                using (IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
                 {
-                    while (received < fileSize)
+                    using (FileStream file = new FileStream(savePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, true))
                     {
-                        int needRead = (int)Math.Min(buffer.Length, fileSize - received);
-                        int read = await stream.ReadAsync(buffer, 0, needRead);
-
-                        if (read <= 0)
-                            throw new IOException("Client ngắt kết nối khi đang upload.");
-
-                        await file.WriteAsync(buffer, 0, read);
-                        received += read;
-
-                        int percent = fileSize == 0 ? 100 : (int)(received * 100 / fileSize);
-                        if (percent != lastPercent && percent % 10 == 0)
+                        while (received < fileSize)
                         {
-                            lastPercent = percent;
-                            Log($"Đang nhận {fileName}: {percent}%\n");
+                            int needRead = (int)Math.Min(buffer.Length, fileSize - received);
+                            int read = await stream.ReadAsync(buffer, 0, needRead);
+
+                            if (read <= 0)
+                                throw new IOException("Client ngắt kết nối khi đang upload.");
+
+                            await file.WriteAsync(buffer, 0, read);
+                            hasher.AppendData(buffer, 0, read);
+                            received += read;
                         }
                     }
+
+                    serverHash = hasher.GetHashAndReset();
                 }
 
-                Log($"Nhận file thành công: {Path.GetFileName(savePath)}\n");
+                // Đọc checksum SHA-256 mà Client gửi sau khi xong phần data, rồi so sánh với checksum tự tính.
+                byte[] hashLengthBytes = await ReadExactOrThrowAsync(stream, 4, "Client ngắt khi gửi checksum.");
+                int hashLength = BitConverter.ToInt32(hashLengthBytes, 0);
+
+                if (hashLength <= 0 || hashLength > 128)
+                    throw new InvalidDataException("Độ dài checksum không hợp lệ.");
+
+                byte[] clientHash = await ReadExactOrThrowAsync(stream, hashLength, "Client ngắt khi gửi checksum.");
+
+                if (serverHash.SequenceEqual(clientHash))
+                {
+                    Log($"Thành công: {fileName} ({FormatSize(fileSize)}) - Checksum SHA-256 khớp ✔\n");
+                }
+                else
+                {
+                    DeletePartialFile(savePath);
+                    Log($"Thất bại: {fileName} - Checksum SHA-256 KHÔNG khớp, file bị lỗi khi truyền. File đã bị xóa.\n");
+                }
             }
             catch (InvalidDataException ex)
             {
                 DeletePartialFile(savePath);
-                Log($"Dữ liệu upload từ {remote} không hợp lệ: {ex.Message}\n");
+                Log($"Thất bại: {fileName} - dữ liệu upload từ {remote} không hợp lệ ({ex.Message})\n");
             }
             catch (IOException)
             {
                 DeletePartialFile(savePath);
-                Log($"Client {remote} đã hủy upload file {fileName}. File dở đã bị xóa.\n");
+                Log($"Thất bại: {fileName} - Client {remote} đã hủy upload. File dở đã bị xóa.\n");
             }
             catch (SocketException)
             {
                 DeletePartialFile(savePath);
-                Log($"Client {remote} đã mất kết nối khi upload file {fileName}. File dở đã bị xóa.\n");
+                Log($"Thất bại: {fileName} - Client {remote} mất kết nối khi đang upload. File dở đã bị xóa.\n");
             }
         }
 

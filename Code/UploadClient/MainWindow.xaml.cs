@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +34,11 @@ namespace UploadClient
         private CancellationTokenSource uploadCts;
         private readonly ObservableCollection<string> fileList = new ObservableCollection<string>();
 
+        // Ghi nhớ các file ĐÃ upload thành công, để "Clear List" không xóa nhầm chúng.
+        // Nhiều file upload song song cùng hoàn tất -> cần lock khi ghi vào HashSet này.
+        private readonly HashSet<string> uploadedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly object uploadedFilesLock = new object();
+
         public MainWindow()
         {
             InitializeComponent();
@@ -45,26 +51,66 @@ namespace UploadClient
 
         private void Window_Drop(object sender, DragEventArgs e)
         {
+            AddDroppedFiles(e);
+        }
+
+        private void dropZone_DragEnter(object sender, DragEventArgs e)
+        {
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
-                string[] droppedFiles = (string[])e.Data.GetData(DataFormats.FileDrop);
-                int added = 0;
+                e.Effects = DragDropEffects.Copy;
+                dropZoneRect.Stroke = Brushes.SteelBlue;
+                dropZoneRect.Fill = new SolidColorBrush(Color.FromRgb(0xEA, 0xF2, 0xFB));
+                lblDropZone.Text = "📂  Thả file ra để thêm vào danh sách";
+            }
+            else
+            {
+                e.Effects = DragDropEffects.None;
+            }
 
-                foreach (string file in droppedFiles)
-                {
-                    if (File.Exists(file) && !fileList.Contains(file))
-                    {
-                        fileList.Add(file);
-                        added++;
-                    }
-                }
+            e.Handled = true;
+        }
 
-                if (added > 0)
+        private void dropZone_DragLeave(object sender, DragEventArgs e)
+        {
+            ResetDropZoneStyle();
+        }
+
+        private void dropZone_Drop(object sender, DragEventArgs e)
+        {
+            ResetDropZoneStyle();
+            AddDroppedFiles(e);
+            e.Handled = true;
+        }
+
+        private void ResetDropZoneStyle()
+        {
+            dropZoneRect.Stroke = new SolidColorBrush(Color.FromRgb(0xB0, 0xB6, 0xBD));
+            dropZoneRect.Fill = new SolidColorBrush(Color.FromRgb(0xFA, 0xFB, 0xFC));
+            lblDropZone.Text = "📂  Kéo và thả file vào đây để thêm vào danh sách upload";
+        }
+
+        private void AddDroppedFiles(DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+
+            string[] droppedFiles = (string[])e.Data.GetData(DataFormats.FileDrop);
+            int added = 0;
+
+            foreach (string file in droppedFiles)
+            {
+                if (File.Exists(file) && !fileList.Contains(file))
                 {
-                    SetProgress(0);
-                    AppendLog($"Đã thêm {added} file từ thao tác kéo thả.\n");
-                    SetButtonState();
+                    fileList.Add(file);
+                    added++;
                 }
+            }
+
+            if (added > 0)
+            {
+                SetProgress(0);
+                AppendLog($"Đã thêm {added} file từ thao tác kéo thả.\n");
+                SetButtonState();
             }
         }
 
@@ -119,9 +165,25 @@ namespace UploadClient
         {
             if (fileList.Count == 0) return;
 
-            fileList.Clear();
+            List<string> toRemove;
+            lock (uploadedFilesLock)
+            {
+                toRemove = fileList.Where(f => !uploadedFiles.Contains(f)).ToList();
+            }
+
+            if (toRemove.Count == 0)
+            {
+                AppendLog("Tất cả file trong danh sách đã upload thành công, không có file nào để xóa.\n");
+                return;
+            }
+
+            foreach (string f in toRemove)
+            {
+                fileList.Remove(f);
+            }
+
             SetProgress(0);
-            AppendLog("Đã clear toàn bộ danh sách file.\n");
+            AppendLog($"Đã xóa {toRemove.Count} file chưa upload khỏi danh sách (giữ lại các file đã upload thành công).\n");
             SetButtonState();
         }
 
@@ -150,16 +212,33 @@ namespace UploadClient
 
             try
             {
-                string[] files = fileList.Where(File.Exists).ToArray();
-                int skipped = fileList.Count - files.Length;
-                if (skipped > 0)
+                List<string> snapshot = fileList.ToList();
+
+                int missingCount = snapshot.Count(f => !File.Exists(f));
+                if (missingCount > 0)
                 {
-                    AppendLog($"Bỏ qua {skipped} file không tồn tại.\n");
+                    AppendLog($"Bỏ qua {missingCount} file không tồn tại.\n");
                 }
+
+                List<string> alreadyUploaded;
+                lock (uploadedFilesLock)
+                {
+                    alreadyUploaded = snapshot.Where(f => uploadedFiles.Contains(f)).ToList();
+                }
+
+                if (alreadyUploaded.Count > 0)
+                {
+                    AppendLog($"Bỏ qua {alreadyUploaded.Count} file đã upload thành công trước đó.\n");
+                }
+
+                string[] files = snapshot
+                    .Where(File.Exists)
+                    .Where(f => !alreadyUploaded.Contains(f))
+                    .ToArray();
 
                 if (files.Length == 0)
                 {
-                    AppendLog("Không có file hợp lệ để upload.\n");
+                    AppendLog("Không có file mới để upload.\n");
                     return;
                 }
 
@@ -193,12 +272,10 @@ namespace UploadClient
                         double percent = totalBytesToSend == 0 ? 100 : sent * 100.0 / totalBytesToSend;
 
                         double speedBps = sent / overallStopwatch.Elapsed.TotalSeconds;
-                        double speedMbps = speedBps / (1024 * 1024);
-
                         long remainingBytes = totalBytesToSend - sent;
                         double etaSeconds = speedBps > 0 ? remainingBytes / speedBps : 0;
 
-                        SetProgress(percent, speedMbps, TimeSpan.FromSeconds(etaSeconds));
+                        SetProgress(percent, speedBps, TimeSpan.FromSeconds(etaSeconds));
                     }
                 }
 
@@ -295,23 +372,38 @@ namespace UploadClient
                     byte[] buffer = new byte[BufferSize];
                     long sent = 0;
 
-                    while (sent < file.Length)
+                    using (IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
                     {
-                        token.ThrowIfCancellationRequested();
+                        while (sent < file.Length)
+                        {
+                            token.ThrowIfCancellationRequested();
 
-                        int read = await fs.ReadAsync(buffer, 0, buffer.Length, token);
-                        if (read <= 0) break;
+                            int read = await fs.ReadAsync(buffer, 0, buffer.Length, token);
+                            if (read <= 0) break;
 
-                        await stream.WriteAsync(buffer, 0, read, token);
-                        sent += read;
+                            await stream.WriteAsync(buffer, 0, read, token);
+                            hasher.AppendData(buffer, 0, read);
+                            sent += read;
 
-                        onBytesSent(read);
+                            onBytesSent(read);
+                        }
+
+                        await stream.FlushAsync(token);
+
+                        // Gửi checksum SHA-256 của file (tính ngay trong lúc đọc/gửi, không cần đọc lại file).
+                        byte[] hash = hasher.GetHashAndReset();
+                        await WriteAsync(stream, BitConverter.GetBytes(hash.Length), token);
+                        await WriteAsync(stream, hash, token);
+                        await stream.FlushAsync(token);
                     }
-
-                    await stream.FlushAsync(token);
                 }
 
                 AppendLog("Upload xong: " + file.Name + "\n");
+
+                lock (uploadedFilesLock)
+                {
+                    uploadedFiles.Add(path);
+                }
             }
             finally
             {
@@ -521,32 +613,47 @@ namespace UploadClient
 
         private void SetButtonState()
         {
-            bool hasFile = fileList.Count > 0;
+            bool hasPendingFile;
+            lock (uploadedFilesLock)
+            {
+                hasPendingFile = fileList.Any(f => !uploadedFiles.Contains(f));
+            }
 
             btnSelectFile.IsEnabled = isConnected && !isUploading;
-            btnClearList.IsEnabled = isConnected && !isUploading && hasFile;
-            btnUpload.IsEnabled = isConnected && !isUploading && hasFile;
+            btnClearList.IsEnabled = isConnected && !isUploading && hasPendingFile;
+            btnUpload.IsEnabled = isConnected && !isUploading && hasPendingFile;
         }
 
-        private void SetProgress(double value, double speedMbps = 0, TimeSpan? eta = null)
+        private void SetProgress(double value, double speedBps = 0, TimeSpan? eta = null)
         {
             if (!Dispatcher.CheckAccess())
             {
-                Dispatcher.Invoke(() => SetProgress(value, speedMbps, eta));
+                Dispatcher.Invoke(() => SetProgress(value, speedBps, eta));
                 return;
             }
 
             value = Math.Max(0, Math.Min(100, value));
             progressUpload.Value = value;
 
-            if (eta.HasValue && speedMbps > 0)
+            if (eta.HasValue && speedBps > 0)
             {
-                lblProgress.Text = $"{value:0}% | {speedMbps:F1} MB/s | ETA: {eta.Value:mm\\:ss}";
+                lblProgress.Text = $"{value:0}% | {FormatSpeed(speedBps)} | ETA: {eta.Value:mm\\:ss}";
             }
             else
             {
                 lblProgress.Text = $"{value:0}%";
             }
+        }
+
+        /// <summary>
+        /// Tự chọn đơn vị hiển thị: KB/s nếu tốc độ dưới 1 MB/s, MB/s nếu từ 1 MB/s trở lên.
+        /// </summary>
+        private string FormatSpeed(double bytesPerSecond)
+        {
+            if (bytesPerSecond < 1024 * 1024)
+                return (bytesPerSecond / 1024.0).ToString("0.0") + " KB/s";
+
+            return (bytesPerSecond / 1024.0 / 1024.0).ToString("0.0") + " MB/s";
         }
 
         private void AppendLog(string message)

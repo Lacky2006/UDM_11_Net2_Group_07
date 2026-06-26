@@ -30,12 +30,19 @@ namespace UploadClient
         public MainWindow()
         {
             InitializeComponent();
-            txtIP.Text = "127.0.0.1";
+
+            string clientIp = GetLocalIPv4();
+            txtIP.Text = "";
+            txtIP.ToolTip = "Nhập IP LAN, IP VPN hoặc Host của Server. Ví dụ: 192.168.1.240, 100.x.x.x, hoặc 0.tcp.ap.ngrok.io";
+
             lstFiles.ItemsSource = fileList;
             lstUploadedFiles.ItemsSource = uploadedFileList;
             DataObject.AddPastingHandler(txtPort, txtPort_Paste);
             SetConnectionState(false);
             SetProgress(0);
+
+            AppendLog("IP LAN Client: " + clientIp + "\n");
+            AppendLog("Vui lòng nhập IP/Host của Server để kết nối.\n");
         }
 
         private async void btnConnect_Click(object sender, RoutedEventArgs e)

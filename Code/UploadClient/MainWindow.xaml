@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Upload Client"
-        Height="660"
-        Width="820"
+        Height="700"
+        Width="900"
         WindowStartupLocation="CenterScreen"
         Background="#F4F6F8"
         AllowDrop="True"
@@ -13,9 +13,9 @@
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="Auto"/>
-			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="120"/>
 		</Grid.RowDefinitions>
 
 		<TextBlock Text="UPLOAD CLIENT"
@@ -34,16 +34,16 @@
 
 			<StackPanel>
 				<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-					<TextBlock Text="Server IP:"
+					<TextBlock Text="Server IP/Host:"
                                FontSize="15"
                                VerticalAlignment="Center"
                                Margin="0,0,8,0"/>
 
 					<TextBox x:Name="txtIP"
-                             Width="150"
+                             Width="170"
                              Height="34"
                              Text="127.0.0.1"
-                             ToolTip="Ứng dụng tự lấy IPv4 của máy. Nếu Server ở máy khác, hãy nhập IP của máy Server."
+                             ToolTip="Nhập IP/Host của máy Server. Ví dụ: 127.0.0.1, 192.168.1.240 hoặc host ngrok/tailscale."
                              FontSize="14"
                              VerticalContentAlignment="Center"
                              Margin="0,0,15,0"/>
@@ -107,8 +107,7 @@
 				<Grid.RowDefinitions>
 					<RowDefinition Height="Auto"/>
 					<RowDefinition Height="Auto"/>
-					<RowDefinition Height="Auto"/>
-					<RowDefinition Height="120"/>
+					<RowDefinition Height="*"/>
 				</Grid.RowDefinitions>
 
 				<StackPanel Orientation="Horizontal">
@@ -136,7 +135,6 @@
                             Click="btnClearList_Click"/>
 				</StackPanel>
 
-				<!-- Ô kéo-thả file riêng biệt -->
 				<Grid Grid.Row="1" Margin="0,12,0,12" Height="64">
 					<Rectangle x:Name="dropZoneRect"
                                RadiusX="8"
@@ -162,17 +160,45 @@
 					</Border>
 				</Grid>
 
-				<TextBlock Grid.Row="2"
-                           Text="Danh sách file chờ upload:"
-                           FontSize="14"
-                           FontWeight="SemiBold"
-                           Margin="0,0,0,6"/>
+				<Grid Grid.Row="2">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="*"/>
+						<ColumnDefinition Width="15"/>
+						<ColumnDefinition Width="*"/>
+					</Grid.ColumnDefinitions>
+					<Grid.RowDefinitions>
+						<RowDefinition Height="Auto"/>
+						<RowDefinition Height="*"/>
+					</Grid.RowDefinitions>
 
-				<ListBox x:Name="lstFiles"
-                         Grid.Row="3"
-                         SelectionMode="Single"
-                         FontSize="13"
-                         HorizontalContentAlignment="Stretch"/>
+					<TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="Danh sách file chờ upload:"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,6"/>
+
+					<TextBlock Grid.Row="0"
+                               Grid.Column="2"
+                               Text="File đã upload:"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,6"/>
+
+					<ListBox x:Name="lstFiles"
+                             Grid.Row="1"
+                             Grid.Column="0"
+                             SelectionMode="Single"
+                             FontSize="13"
+                             HorizontalContentAlignment="Stretch"/>
+
+					<ListBox x:Name="lstUploadedFiles"
+                             Grid.Row="1"
+                             Grid.Column="2"
+                             SelectionMode="Single"
+                             FontSize="13"
+                             HorizontalContentAlignment="Stretch"/>
+				</Grid>
 			</Grid>
 		</Border>
 

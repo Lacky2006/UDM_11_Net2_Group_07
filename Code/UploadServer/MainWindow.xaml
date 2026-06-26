@@ -31,22 +31,22 @@
 
 					<StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,5">
 						<TextBlock Text="IP:" Width="45" VerticalAlignment="Center" FontSize="14"/>
-						<TextBox x:Name="txtIP" Text="192.168.56.1" Width="180" Height="25" VerticalContentAlignment="Center"/>
+						<TextBox x:Name="txtIP" Width="180" Height="25" VerticalContentAlignment="Center"/>
 					</StackPanel>
 
 					<StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0,5">
 						<TextBlock Text="Port:" Width="45" VerticalAlignment="Center" FontSize="14"/>
-						<TextBox x:Name="txtPort" Text="5000" Width="180" Height="25" VerticalContentAlignment="Center" PreviewTextInput="txtPort_PreviewTextInput"/>
+						<TextBox x:Name="txtPort" Text="9000" Width="180" Height="25" VerticalContentAlignment="Center" PreviewTextInput="txtPort_PreviewTextInput"/>
 					</StackPanel>
 
 					<StackPanel Orientation="Horizontal" Grid.Row="2" Margin="0,15,0,5" HorizontalAlignment="Center">
 						<Button x:Name="btnStart" Content="[ Start Server ]" Width="110" Height="30" Margin="0,0,10,0" Click="btnStart_Click"/>
-						<Button x:Name="btnStop" Content="[ Stop Server ]" Width="110" Height="30" IsEnabled="False" Click="btnStop_Click"/>
+						<Button x:Name="btnStop" Content="[ Stop Server ]" Width="110" Height="30" Click="btnStop_Click"/>
 					</StackPanel>
 
 					<StackPanel Orientation="Horizontal" Grid.Row="3" Margin="0,5,0,0">
-						<TextBlock Text="Status: Running" VerticalAlignment="Center" FontSize="14" Margin="0,0,5,0"/>
-						<Ellipse Width="15" Height="15" Fill="LimeGreen" Stroke="Gray" VerticalAlignment="Center"/>
+						<TextBlock x:Name="lblServerStatus" Text="Status: Offline" VerticalAlignment="Center" FontSize="14" Margin="0,0,5,0"/>
+						<Ellipse x:Name="ellServerStatus" Width="15" Height="15" Fill="Red" Stroke="Gray" VerticalAlignment="Center"/>
 					</StackPanel>
 				</Grid>
 			</GroupBox>

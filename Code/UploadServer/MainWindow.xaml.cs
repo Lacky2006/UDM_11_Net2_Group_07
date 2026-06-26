@@ -1,12 +1,17 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace UploadServer
 {
@@ -15,13 +20,24 @@ namespace UploadServer
         private TcpListener listener;
         private bool isRunning;
         private const int BufferSize = 1024 * 1024;
+        private const int ClientTimeoutSeconds = 8;
+
+        private readonly ObservableCollection<ClientInfo> clients = new ObservableCollection<ClientInfo>();
+        private readonly ObservableCollection<ReceivedFileInfo> receivedFiles = new ObservableCollection<ReceivedFileInfo>();
+        private readonly List<TcpClient> activeTcpClients = new List<TcpClient>();
+        private readonly object activeTcpClientsLock = new object();
+        private CancellationTokenSource clientCleanupCts;
 
         public MainWindow()
         {
             InitializeComponent();
 
+            lvClients.ItemsSource = clients;
+            lvReceivedFiles.ItemsSource = receivedFiles;
+
             txtIP.Text = GetLocalIPv4();
             SetServerState(false);
+            UpdateCounters();
 
             DataObject.AddPastingHandler(txtPort, txtPort_Paste);
             Log("IP LAN: " + txtIP.Text + "\n");
@@ -38,15 +54,15 @@ namespace UploadServer
                 listener.Start();
 
                 SetServerState(true);
+                StartClientCleanupLoop();
 
                 int realPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+                string lanIp = GetLocalIPv4();
+
+                txtIP.Text = lanIp;
                 txtPort.Text = realPort.ToString();
 
-                string lanIp = GetLocalIPv4();
-                txtIP.Text = lanIp;
-
                 Log($"Server đã chạy: {lanIp}:{realPort}\n");
-
                 await AcceptClientsAsync();
             }
             catch (Exception ex)
@@ -63,6 +79,13 @@ namespace UploadServer
                 try
                 {
                     TcpClient client = await listener.AcceptTcpClientAsync();
+                    client.NoDelay = true;
+
+                    lock (activeTcpClientsLock)
+                    {
+                        activeTcpClients.Add(client);
+                    }
+
                     _ = Task.Run(() => HandleClientAsync(client));
                 }
                 catch (ObjectDisposedException)
@@ -83,7 +106,7 @@ namespace UploadServer
 
         private async Task HandleClientAsync(TcpClient client)
         {
-            string remote = client.Client.RemoteEndPoint?.ToString() ?? "Unknown";
+            string remote = GetRemoteIp(client);
 
             try
             {
@@ -97,17 +120,16 @@ namespace UploadServer
 
                     if (command == "ping")
                     {
+                        AddOrRefreshClient(remote);
+
                         byte[] pong = Encoding.UTF8.GetBytes("pong");
                         await stream.WriteAsync(pong, 0, pong.Length);
                         await stream.FlushAsync();
                     }
                     else if (command == "FILE")
                     {
-                        await ReceiveFileAsync(stream);
-                    }
-                    else
-                    {
-                        Log($"Lệnh không hợp lệ từ {remote}: {command}\n");
+                        AddOrRefreshClient(remote);
+                        await ReceiveFileAsync(stream, remote);
                     }
                 }
             }
@@ -124,35 +146,47 @@ namespace UploadServer
             {
                 Log($"Lỗi xử lý Client {remote}: {ex.Message}\n");
             }
+            finally
+            {
+                lock (activeTcpClientsLock)
+                {
+                    activeTcpClients.Remove(client);
+                }
+            }
         }
 
-        private async Task ReceiveFileAsync(NetworkStream stream)
+        private async Task ReceiveFileAsync(NetworkStream stream, string remote)
         {
             string savePath = null;
             string fileName = "Unknown";
+            long fileSize = 0;
+            bool hasFileHeader = false;
+            ReceivedFileInfo fileInfo = null;
 
             try
             {
-                byte[] nameLengthBytes = await ReadExactOrThrowAsync(stream, 4, "Lỗi độ dài tên file.");
+                byte[] nameLengthBytes = await ReadExactOrThrowAsync(stream, 4);
                 int nameLength = BitConverter.ToInt32(nameLengthBytes, 0);
 
                 if (nameLength <= 0 || nameLength > 1024)
                     throw new InvalidDataException();
 
-                byte[] nameBytes = await ReadExactOrThrowAsync(stream, nameLength, "Lỗi tên file.");
+                byte[] nameBytes = await ReadExactOrThrowAsync(stream, nameLength);
                 fileName = Path.GetFileName(Encoding.UTF8.GetString(nameBytes));
 
-                byte[] sizeBytes = await ReadExactOrThrowAsync(stream, 8, "Lỗi dung lượng file.");
-                long fileSize = BitConverter.ToInt64(sizeBytes, 0);
+                byte[] sizeBytes = await ReadExactOrThrowAsync(stream, 8);
+                fileSize = BitConverter.ToInt64(sizeBytes, 0);
 
                 if (fileSize < 0)
                     throw new InvalidDataException();
+
+                hasFileHeader = true;
 
                 string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Uploads");
                 Directory.CreateDirectory(folder);
 
                 savePath = GetUniquePath(Path.Combine(folder, fileName));
-
+                fileInfo = AddReceivedFile(remote, fileName, FormatSize(fileSize), "Đang tải");
                 Log($"Đang tải: {fileName}\n");
 
                 byte[] buffer = new byte[BufferSize];
@@ -173,19 +207,29 @@ namespace UploadServer
                     }
                 }
 
+                UpdateReceivedFile(fileInfo, Path.GetFileName(savePath), FormatSize(fileSize), "Thành công");
                 Log($"Thành công: {Path.GetFileName(savePath)}\n");
             }
             catch
             {
                 DeletePartialFile(savePath);
-                Log($"Thất bại: {fileName}\n");
+
+                if (hasFileHeader)
+                {
+                    if (fileInfo == null)
+                        AddReceivedFile(remote, fileName, FormatSize(fileSize), "Thất bại");
+                    else
+                        UpdateReceivedFile(fileInfo, fileName, FormatSize(fileSize), "Thất bại");
+
+                    Log($"Thất bại: {fileName}\n");
+                }
             }
         }
 
-        private async Task<byte[]> ReadExactOrThrowAsync(NetworkStream stream, int size, string errorMessage)
+        private async Task<byte[]> ReadExactOrThrowAsync(NetworkStream stream, int size)
         {
             byte[] data = await ReadExactAsync(stream, size);
-            if (data == null) throw new IOException(errorMessage);
+            if (data == null) throw new IOException();
             return data;
         }
 
@@ -215,6 +259,28 @@ namespace UploadServer
             isRunning = false;
             listener?.Stop();
             listener = null;
+
+            StopClientCleanupLoop();
+
+            TcpClient[] clientsToClose;
+            lock (activeTcpClientsLock)
+            {
+                clientsToClose = activeTcpClients.ToArray();
+                activeTcpClients.Clear();
+            }
+
+            foreach (TcpClient client in clientsToClose)
+            {
+                try
+                {
+                    client.Close();
+                }
+                catch
+                {
+                }
+            }
+
+            ClearClients();
             SetServerState(false);
         }
 
@@ -223,7 +289,11 @@ namespace UploadServer
             isRunning = running;
             btnStart.IsEnabled = !running;
             btnStop.IsEnabled = running;
+            txtIP.IsEnabled = !running;
             txtPort.IsEnabled = !running;
+
+            lblServerStatus.Text = running ? "Status: Running" : "Status: Offline";
+            ellServerStatus.Fill = running ? Brushes.LimeGreen : Brushes.Red;
         }
 
         private bool TryReadConfig(out int port)
@@ -256,6 +326,177 @@ namespace UploadServer
             }
 
             return "127.0.0.1";
+        }
+
+        private string GetRemoteIp(TcpClient client)
+        {
+            try
+            {
+                IPEndPoint endPoint = client.Client.RemoteEndPoint as IPEndPoint;
+                if (endPoint != null) return endPoint.Address.ToString();
+            }
+            catch
+            {
+            }
+
+            return "Unknown";
+        }
+
+        private void AddOrRefreshClient(string ip)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => AddOrRefreshClient(ip));
+                return;
+            }
+
+            ClientInfo item = clients.FirstOrDefault(c => c.IPClient == ip);
+
+            if (item == null)
+            {
+                item = new ClientInfo
+                {
+                    STT = clients.Count + 1,
+                    IPClient = ip,
+                    LastSeen = DateTime.Now
+                };
+
+                clients.Add(item);
+                Log($"Client kết nối: {ip}\n");
+            }
+            else
+            {
+                item.LastSeen = DateTime.Now;
+            }
+
+            lvClients.Items.Refresh();
+            UpdateCounters();
+        }
+
+        private void RemoveExpiredClients()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(RemoveExpiredClients);
+                return;
+            }
+
+            DateTime now = DateTime.Now;
+            List<ClientInfo> expiredClients = clients
+                .Where(c => (now - c.LastSeen).TotalSeconds > ClientTimeoutSeconds)
+                .ToList();
+
+            foreach (ClientInfo item in expiredClients)
+            {
+                clients.Remove(item);
+                Log($"Client ngắt kết nối: {item.IPClient}\n");
+            }
+
+            if (expiredClients.Count > 0)
+            {
+                RenumberClients();
+                UpdateCounters();
+            }
+        }
+
+        private void ClearClients()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(ClearClients);
+                return;
+            }
+
+            clients.Clear();
+            UpdateCounters();
+        }
+
+        private ReceivedFileInfo AddReceivedFile(string ip, string fileName, string size, string status)
+        {
+            if (!Dispatcher.CheckAccess())
+                return Dispatcher.Invoke(() => AddReceivedFile(ip, fileName, size, status));
+
+            ReceivedFileInfo item = new ReceivedFileInfo
+            {
+                STT = receivedFiles.Count + 1,
+                IPClient = ip,
+                FileName = fileName,
+                Size = size,
+                Status = status,
+                ReceivedTime = DateTime.Now.ToString("HH:mm:ss dd/MM/yyyy")
+            };
+
+            receivedFiles.Add(item);
+            UpdateCounters();
+            return item;
+        }
+
+        private void UpdateReceivedFile(ReceivedFileInfo item, string fileName, string size, string status)
+        {
+            if (item == null) return;
+
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => UpdateReceivedFile(item, fileName, size, status));
+                return;
+            }
+
+            item.FileName = fileName;
+            item.Size = size;
+            item.Status = status;
+            item.ReceivedTime = DateTime.Now.ToString("HH:mm:ss dd/MM/yyyy");
+            lvReceivedFiles.Items.Refresh();
+            UpdateCounters();
+        }
+
+        private void RenumberClients()
+        {
+            for (int i = 0; i < clients.Count; i++)
+                clients[i].STT = i + 1;
+
+            lvClients.Items.Refresh();
+        }
+
+        private void UpdateCounters()
+        {
+            lblClientCount.Text = clients.Count + " Client(s) connected";
+            lblTotalFiles.Text = "Total files: " + receivedFiles.Count;
+        }
+
+        private void StartClientCleanupLoop()
+        {
+            StopClientCleanupLoop();
+            clientCleanupCts = new CancellationTokenSource();
+            CancellationToken token = clientCleanupCts.Token;
+
+            Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(1000, token);
+                        if (!isRunning) break;
+                        RemoveExpiredClients();
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        break;
+                    }
+                    catch
+                    {
+                    }
+                }
+            }, token);
+        }
+
+        private void StopClientCleanupLoop()
+        {
+            if (clientCleanupCts == null) return;
+
+            clientCleanupCts.Cancel();
+            clientCleanupCts.Dispose();
+            clientCleanupCts = null;
         }
 
         private void txtPort_PreviewTextInput(object sender, TextCompositionEventArgs e)
@@ -315,6 +556,14 @@ namespace UploadServer
             return Path.Combine(folder, $"{name}_{DateTime.Now:yyyyMMdd_HHmmss}{ext}");
         }
 
+        private string FormatSize(long bytes)
+        {
+            if (bytes < 1024) return bytes + " B";
+            if (bytes < 1024 * 1024) return (bytes / 1024.0).ToString("0.00") + " KB";
+            if (bytes < 1024L * 1024 * 1024) return (bytes / 1024.0 / 1024).ToString("0.00") + " MB";
+            return (bytes / 1024.0 / 1024 / 1024).ToString("0.00") + " GB";
+        }
+
         private void Log(string message)
         {
             if (!Dispatcher.CheckAccess())
@@ -332,5 +581,22 @@ namespace UploadServer
             StopServer();
             base.OnClosed(e);
         }
+    }
+
+    public class ClientInfo
+    {
+        public int STT { get; set; }
+        public string IPClient { get; set; }
+        public DateTime LastSeen { get; set; }
+    }
+
+    public class ReceivedFileInfo
+    {
+        public int STT { get; set; }
+        public string IPClient { get; set; }
+        public string FileName { get; set; }
+        public string Size { get; set; }
+        public string Status { get; set; }
+        public string ReceivedTime { get; set; }
     }
 }

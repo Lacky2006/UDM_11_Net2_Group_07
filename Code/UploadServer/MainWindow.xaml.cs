@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -129,7 +130,12 @@ namespace UploadServer
                     else if (command == "FILE")
                     {
                         AddOrRefreshClient(remote);
-                        await ReceiveFileAsync(stream, remote);
+                        await ReceiveLegacyFileAsync(stream, remote);
+                    }
+                    else if (command == "F2LE")
+                    {
+                        AddOrRefreshClient(remote);
+                        await ReceivePhase4FileAsync(stream, remote);
                     }
                 }
             }
@@ -155,7 +161,7 @@ namespace UploadServer
             }
         }
 
-        private async Task ReceiveFileAsync(NetworkStream stream, string remote)
+        private async Task ReceiveLegacyFileAsync(NetworkStream stream, string remote)
         {
             string savePath = null;
             string fileName = "Unknown";
@@ -226,6 +232,177 @@ namespace UploadServer
             }
         }
 
+        private async Task ReceivePhase4FileAsync(NetworkStream stream, string remote)
+        {
+            string finalPath = null;
+            string tempPath = null;
+            string fileName = "Unknown";
+            string clientHash = "";
+            long fileSize = 0;
+            long offset = 0;
+            bool hasFileHeader = false;
+            bool deleteTempFile = false;
+            ReceivedFileInfo fileInfo = null;
+
+            try
+            {
+                byte[] nameLengthBytes = await ReadExactOrThrowAsync(stream, 4);
+                int nameLength = BitConverter.ToInt32(nameLengthBytes, 0);
+
+                if (nameLength <= 0 || nameLength > 1024)
+                    throw new InvalidDataException();
+
+                byte[] nameBytes = await ReadExactOrThrowAsync(stream, nameLength);
+                fileName = Path.GetFileName(Encoding.UTF8.GetString(nameBytes));
+
+                byte[] sizeBytes = await ReadExactOrThrowAsync(stream, 8);
+                fileSize = BitConverter.ToInt64(sizeBytes, 0);
+
+                if (fileSize < 0)
+                    throw new InvalidDataException();
+
+                byte[] hashLengthBytes = await ReadExactOrThrowAsync(stream, 4);
+                int hashLength = BitConverter.ToInt32(hashLengthBytes, 0);
+
+                if (hashLength <= 0 || hashLength > 256)
+                    throw new InvalidDataException();
+
+                byte[] hashBytes = await ReadExactOrThrowAsync(stream, hashLength);
+                clientHash = Encoding.UTF8.GetString(hashBytes).Trim().ToLowerInvariant();
+
+                if (clientHash.Length == 0)
+                    throw new InvalidDataException();
+
+                hasFileHeader = true;
+
+                string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Uploads");
+                Directory.CreateDirectory(folder);
+
+                finalPath = Path.Combine(folder, fileName);
+                tempPath = GetTempPathForResume(finalPath, clientHash);
+
+                offset = GetResumeOffset(tempPath, fileSize);
+                await WriteLongAsync(stream, offset);
+                await stream.FlushAsync();
+
+                fileInfo = AddReceivedFile(remote, fileName, FormatSize(fileSize), "Đang tải");
+                Log($"Đang tải: {fileName}\n");
+
+                byte[] buffer = new byte[BufferSize];
+                long received = offset;
+
+                using (FileStream file = new FileStream(tempPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None, BufferSize, true))
+                {
+                    file.SetLength(offset);
+                    file.Position = offset;
+
+                    while (received < fileSize)
+                    {
+                        int needRead = (int)Math.Min(buffer.Length, fileSize - received);
+                        int read = await stream.ReadAsync(buffer, 0, needRead);
+
+                        if (read <= 0)
+                            throw new IOException();
+
+                        await file.WriteAsync(buffer, 0, read);
+                        received += read;
+                    }
+                }
+
+                string serverHash = ComputeSha256(tempPath);
+
+                if (!string.Equals(serverHash, clientHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    deleteTempFile = true;
+                    DeletePartialFile(tempPath);
+                    UpdateReceivedFile(fileInfo, fileName, FormatSize(fileSize), "Thất bại");
+                    Log($"Thất bại: {fileName}\n");
+                    await SendResultAsync(stream, "FAIL", "Checksum không khớp.");
+                    return;
+                }
+
+                string completedPath = GetUniquePath(finalPath);
+                if (File.Exists(completedPath))
+                    completedPath = GetUniquePath(completedPath);
+
+                File.Move(tempPath, completedPath);
+
+                UpdateReceivedFile(fileInfo, Path.GetFileName(completedPath), FormatSize(fileSize), "Thành công");
+                Log($"Thành công: {Path.GetFileName(completedPath)}\n");
+                await SendResultAsync(stream, "DONE", "Upload thành công.");
+            }
+            catch
+            {
+                if (deleteTempFile)
+                    DeletePartialFile(tempPath);
+
+                if (hasFileHeader)
+                {
+                    if (fileInfo == null)
+                        AddReceivedFile(remote, fileName, FormatSize(fileSize), "Thất bại");
+                    else
+                        UpdateReceivedFile(fileInfo, fileName, FormatSize(fileSize), "Thất bại");
+
+                    Log($"Thất bại: {fileName}\n");
+
+                    try
+                    {
+                        await SendResultAsync(stream, "FAIL", "Upload thất bại.");
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        }
+
+        private long GetResumeOffset(string tempPath, long fileSize)
+        {
+            try
+            {
+                if (!File.Exists(tempPath)) return 0;
+
+                long length = new FileInfo(tempPath).Length;
+                if (length < 0 || length > fileSize)
+                {
+                    File.Delete(tempPath);
+                    return 0;
+                }
+
+                return length;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private string GetTempPathForResume(string finalPath, string sha256)
+        {
+            string folder = Path.GetDirectoryName(finalPath);
+            string name = Path.GetFileNameWithoutExtension(finalPath);
+            string ext = Path.GetExtension(finalPath);
+            string suffix = sha256.Length > 12 ? sha256.Substring(0, 12) : sha256;
+            return Path.Combine(folder, $"{name}_{suffix}{ext}.part");
+        }
+
+        private async Task SendResultAsync(NetworkStream stream, string status, string message)
+        {
+            byte[] statusBytes = Encoding.UTF8.GetBytes(status.PadRight(4).Substring(0, 4));
+            byte[] messageBytes = Encoding.UTF8.GetBytes(message ?? "");
+            await stream.WriteAsync(statusBytes, 0, statusBytes.Length);
+            await stream.WriteAsync(BitConverter.GetBytes(messageBytes.Length), 0, 4);
+            if (messageBytes.Length > 0)
+                await stream.WriteAsync(messageBytes, 0, messageBytes.Length);
+            await stream.FlushAsync();
+        }
+
+        private async Task WriteLongAsync(NetworkStream stream, long value)
+        {
+            byte[] data = BitConverter.GetBytes(value);
+            await stream.WriteAsync(data, 0, data.Length);
+        }
+
         private async Task<byte[]> ReadExactOrThrowAsync(NetworkStream stream, int size)
         {
             byte[] data = await ReadExactAsync(stream, size);
@@ -246,6 +423,21 @@ namespace UploadServer
             }
 
             return buffer;
+        }
+
+        private string ComputeSha256(string path)
+        {
+            using (SHA256 sha = SHA256.Create())
+            using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                byte[] hash = sha.ComputeHash(stream);
+                StringBuilder builder = new StringBuilder(hash.Length * 2);
+
+                foreach (byte b in hash)
+                    builder.Append(b.ToString("x2"));
+
+                return builder.ToString();
+            }
         }
 
         private void btnStop_Click(object sender, RoutedEventArgs e)

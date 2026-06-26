@@ -1,10 +1,8 @@
 ﻿using System;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -16,7 +14,7 @@ namespace UploadServer
     {
         private TcpListener listener;
         private bool isRunning;
-        private const int BufferSize = 64 * 1024;
+        private const int BufferSize = 1024 * 1024;
 
         public MainWindow()
         {
@@ -26,17 +24,17 @@ namespace UploadServer
             SetServerState(false);
 
             DataObject.AddPastingHandler(txtPort, txtPort_Paste);
-            Log("IP máy hiện tại: " + txtIP.Text + "\n");
+            Log("IP LAN: " + txtIP.Text + "\n");
         }
 
         private async void btnStart_Click(object sender, RoutedEventArgs e)
         {
             if (isRunning) return;
-            if (!TryReadConfig(out IPAddress ip, out int port)) return;
+            if (!TryReadConfig(out int port)) return;
 
             try
             {
-                listener = new TcpListener(ip, port);
+                listener = new TcpListener(IPAddress.Any, port);
                 listener.Start();
 
                 SetServerState(true);
@@ -44,7 +42,11 @@ namespace UploadServer
                 int realPort = ((IPEndPoint)listener.LocalEndpoint).Port;
                 txtPort.Text = realPort.ToString();
 
-                Log($"Server đã chạy tại {ip}:{realPort}\n");
+                string lanIp = GetLocalIPv4();
+                txtIP.Text = lanIp;
+
+                Log($"Server đã chạy: {lanIp}:{realPort}\n");
+
                 await AcceptClientsAsync();
             }
             catch (Exception ex)
@@ -69,7 +71,7 @@ namespace UploadServer
                 }
                 catch (SocketException)
                 {
-                    if (isRunning) Log("Socket đã dừng khi chờ Client kết nối.\n");
+                    if (isRunning) Log("Server socket đã dừng.\n");
                     break;
                 }
                 catch (Exception ex)
@@ -89,11 +91,7 @@ namespace UploadServer
                 using (NetworkStream stream = client.GetStream())
                 {
                     byte[] commandBytes = await ReadExactAsync(stream, 4);
-                    if (commandBytes == null)
-                    {
-                        Log($"Client {remote} đã ngắt kết nối.\n");
-                        return;
-                    }
+                    if (commandBytes == null) return;
 
                     string command = Encoding.UTF8.GetString(commandBytes);
 
@@ -105,25 +103,22 @@ namespace UploadServer
                     }
                     else if (command == "FILE")
                     {
-                        await ReceiveFileAsync(stream, remote);
+                        await ReceiveFileAsync(stream);
                     }
                     else
                     {
-                        Log($"Client {remote} gửi lệnh sai: {command}\n");
+                        Log($"Lệnh không hợp lệ từ {remote}: {command}\n");
                     }
                 }
             }
             catch (IOException)
             {
-                Log($"Client {remote} đã ngắt kết nối.\n");
             }
             catch (SocketException)
             {
-                Log($"Client {remote} đã ngắt kết nối.\n");
             }
             catch (ObjectDisposedException)
             {
-                Log($"Client {remote} đã đóng kết nối.\n");
             }
             catch (Exception ex)
             {
@@ -131,94 +126,59 @@ namespace UploadServer
             }
         }
 
-        private async Task ReceiveFileAsync(NetworkStream stream, string remote)
+        private async Task ReceiveFileAsync(NetworkStream stream)
         {
             string savePath = null;
             string fileName = "Unknown";
 
             try
             {
-                byte[] nameLengthBytes = await ReadExactOrThrowAsync(stream, 4, "Client ngắt khi gửi độ dài tên file.");
+                byte[] nameLengthBytes = await ReadExactOrThrowAsync(stream, 4, "Lỗi độ dài tên file.");
                 int nameLength = BitConverter.ToInt32(nameLengthBytes, 0);
 
                 if (nameLength <= 0 || nameLength > 1024)
-                    throw new InvalidDataException("Độ dài tên file không hợp lệ.");
+                    throw new InvalidDataException();
 
-                byte[] nameBytes = await ReadExactOrThrowAsync(stream, nameLength, "Client ngắt khi gửi tên file.");
+                byte[] nameBytes = await ReadExactOrThrowAsync(stream, nameLength, "Lỗi tên file.");
                 fileName = Path.GetFileName(Encoding.UTF8.GetString(nameBytes));
 
-                byte[] sizeBytes = await ReadExactOrThrowAsync(stream, 8, "Client ngắt khi gửi dung lượng file.");
+                byte[] sizeBytes = await ReadExactOrThrowAsync(stream, 8, "Lỗi dung lượng file.");
                 long fileSize = BitConverter.ToInt64(sizeBytes, 0);
 
                 if (fileSize < 0)
-                    throw new InvalidDataException("Dung lượng file không hợp lệ.");
+                    throw new InvalidDataException();
 
                 string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Uploads");
                 Directory.CreateDirectory(folder);
 
                 savePath = GetUniquePath(Path.Combine(folder, fileName));
 
-                // Chỉ log 1 dòng khi BẮT ĐẦU nhận file (không log % tiến trình liên tục nữa).
-                Log($"Đang tải: {fileName} ({FormatSize(fileSize)}) từ Client {remote}\n");
+                Log($"Đang tải: {fileName}\n");
 
                 byte[] buffer = new byte[BufferSize];
                 long received = 0;
-                byte[] serverHash;
 
-                using (IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+                using (FileStream file = new FileStream(savePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, true))
                 {
-                    using (FileStream file = new FileStream(savePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, true))
+                    while (received < fileSize)
                     {
-                        while (received < fileSize)
-                        {
-                            int needRead = (int)Math.Min(buffer.Length, fileSize - received);
-                            int read = await stream.ReadAsync(buffer, 0, needRead);
+                        int needRead = (int)Math.Min(buffer.Length, fileSize - received);
+                        int read = await stream.ReadAsync(buffer, 0, needRead);
 
-                            if (read <= 0)
-                                throw new IOException("Client ngắt kết nối khi đang upload.");
+                        if (read <= 0)
+                            throw new IOException();
 
-                            await file.WriteAsync(buffer, 0, read);
-                            hasher.AppendData(buffer, 0, read);
-                            received += read;
-                        }
+                        await file.WriteAsync(buffer, 0, read);
+                        received += read;
                     }
-
-                    serverHash = hasher.GetHashAndReset();
                 }
 
-                // Đọc checksum SHA-256 mà Client gửi sau khi xong phần data, rồi so sánh với checksum tự tính.
-                byte[] hashLengthBytes = await ReadExactOrThrowAsync(stream, 4, "Client ngắt khi gửi checksum.");
-                int hashLength = BitConverter.ToInt32(hashLengthBytes, 0);
-
-                if (hashLength <= 0 || hashLength > 128)
-                    throw new InvalidDataException("Độ dài checksum không hợp lệ.");
-
-                byte[] clientHash = await ReadExactOrThrowAsync(stream, hashLength, "Client ngắt khi gửi checksum.");
-
-                if (serverHash.SequenceEqual(clientHash))
-                {
-                    Log($"Thành công: {fileName} ({FormatSize(fileSize)}) - Checksum SHA-256 khớp ✔\n");
-                }
-                else
-                {
-                    DeletePartialFile(savePath);
-                    Log($"Thất bại: {fileName} - Checksum SHA-256 KHÔNG khớp, file bị lỗi khi truyền. File đã bị xóa.\n");
-                }
+                Log($"Thành công: {Path.GetFileName(savePath)}\n");
             }
-            catch (InvalidDataException ex)
+            catch
             {
                 DeletePartialFile(savePath);
-                Log($"Thất bại: {fileName} - dữ liệu upload từ {remote} không hợp lệ ({ex.Message})\n");
-            }
-            catch (IOException)
-            {
-                DeletePartialFile(savePath);
-                Log($"Thất bại: {fileName} - Client {remote} đã hủy upload. File dở đã bị xóa.\n");
-            }
-            catch (SocketException)
-            {
-                DeletePartialFile(savePath);
-                Log($"Thất bại: {fileName} - Client {remote} mất kết nối khi đang upload. File dở đã bị xóa.\n");
+                Log($"Thất bại: {fileName}\n");
             }
         }
 
@@ -266,17 +226,10 @@ namespace UploadServer
             txtPort.IsEnabled = !running;
         }
 
-        private bool TryReadConfig(out IPAddress ip, out int port)
+        private bool TryReadConfig(out int port)
         {
-            ip = null;
             port = 0;
             txtIP.Text = GetLocalIPv4();
-
-            if (!IPAddress.TryParse(txtIP.Text.Trim(), out ip))
-            {
-                MessageBox.Show("Không lấy được IP của máy!");
-                return false;
-            }
 
             if (!int.TryParse(txtPort.Text.Trim(), out port) || port < 0 || port > 65535)
             {
@@ -360,14 +313,6 @@ namespace UploadServer
             string name = Path.GetFileNameWithoutExtension(path);
             string ext = Path.GetExtension(path);
             return Path.Combine(folder, $"{name}_{DateTime.Now:yyyyMMdd_HHmmss}{ext}");
-        }
-
-        private string FormatSize(long bytes)
-        {
-            if (bytes < 1024) return bytes + " B";
-            if (bytes < 1024 * 1024) return (bytes / 1024.0).ToString("0.00") + " KB";
-            if (bytes < 1024L * 1024 * 1024) return (bytes / 1024.0 / 1024).ToString("0.00") + " MB";
-            return (bytes / 1024.0 / 1024 / 1024).ToString("0.00") + " GB";
         }
 
         private void Log(string message)

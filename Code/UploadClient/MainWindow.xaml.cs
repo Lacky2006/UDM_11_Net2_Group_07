@@ -128,8 +128,16 @@ namespace UploadClient
             {
                 using (SemaphoreSlim semaphore = new SemaphoreSlim(MaxParallelUploads))
                 {
+                    // Quan trọng: phải chạy qua Task.Run để toàn bộ pipeline upload
+                    // (bao gồm pauseEvent.Wait(token) ở dưới) thực thi trên background thread,
+                    // KHÔNG capture SynchronizationContext của UI thread.
+                    // Nếu gọi UploadStatusItemAsync trực tiếp, phần code trước await đầu tiên
+                    // chạy ngay trên UI thread, và do mọi await sau đó post continuation
+                    // trở lại UI thread, lệnh pauseEvent.Wait() (blocking) có thể bị thực thi
+                    // ngay trên UI thread => khi Pause được bấm, UI thread bị block vĩnh viễn
+                    // (vì Resume cũng cần UI thread để xử lý click) => client bị đơ hoàn toàn.
                     Task<bool>[] tasks = pending
-                        .Select(item => UploadStatusItemAsync(ip, port, item, semaphore, uploadCts.Token))
+                        .Select(item => Task.Run(() => UploadStatusItemAsync(ip, port, item, semaphore, uploadCts.Token)))
                         .ToArray();
 
                     bool[] results = await Task.WhenAll(tasks);

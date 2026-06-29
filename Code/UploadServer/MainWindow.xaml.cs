@@ -1,79 +1,71 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
 
 namespace UploadServer
 {
     public partial class MainWindow : Window
     {
+        private const int BufferSize = 1024 * 1024;
+        private const int ClientTimeoutSeconds = 8;
+
         private TcpListener listener;
-        private bool isRunning = false;
-        // Log auto-scroll support (simplified)
+        private bool isRunning;
+        private CancellationTokenSource clientCleanupCts;
+
+        private readonly ObservableCollection<ClientInfo> clients = new ObservableCollection<ClientInfo>();
+        private readonly ObservableCollection<ReceivedFileInfo> receivedFiles = new ObservableCollection<ReceivedFileInfo>();
+        private readonly List<TcpClient> activeTcpClients = new List<TcpClient>();
+        private readonly object activeTcpClientsLock = new object();
+        private readonly object filePathLock = new object();
+        private readonly HashSet<string> reservedFilePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public MainWindow()
         {
             InitializeComponent();
-
-            btnStart.IsEnabled = true;
-            btnStop.IsEnabled = false;
-
-            // No complex scroll setup; rely on caret + ScrollToEnd in AppendLog
+            lvClients.ItemsSource = clients;
+            lvReceivedFiles.ItemsSource = receivedFiles;
+            txtIP.Text = GetLocalIPv4();
+            SetServerState(false);
+            UpdateCounters();
+            DataObject.AddPastingHandler(txtPort, txtPort_Paste);
+            Log("IP LAN: " + txtIP.Text + "\n");
         }
 
         private async void btnStart_Click(object sender, RoutedEventArgs e)
         {
-            if (isRunning)
-            {
-                MessageBox.Show("Server đang chạy rồi!");
-                return;
-            }
-
-            if (!IPAddress.TryParse(txtIP.Text.Trim(), out IPAddress ipAddress))
-            {
-                MessageBox.Show("IP không hợp lệ!");
-                return;
-            }
-
-            if (!int.TryParse(txtPort.Text.Trim(), out int port))
-            {
-                MessageBox.Show("Port không hợp lệ!");
-                return;
-            }
-
-            if (port < 1 || port > 65535)
-            {
-                MessageBox.Show("Port phải nằm trong khoảng 1 đến 65535!");
-                return;
-            }
+            if (isRunning || !TryReadConfig(out int port)) return;
 
             try
             {
-                listener = new TcpListener(ipAddress, port);
+                listener = new TcpListener(IPAddress.Any, port);
                 listener.Start();
+                SetServerState(true);
+                StartClientCleanupLoop();
 
-                isRunning = true;
-
-                btnStart.IsEnabled = false;
-                btnStop.IsEnabled = true;
-                txtIP.IsEnabled = false;
-                txtPort.IsEnabled = false;
-
-                AppendLog($"Server đã bắt đầu tại IP {ipAddress}, cổng {port}...\n");
+                int realPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+                txtIP.Text = GetLocalIPv4();
+                txtPort.Text = realPort.ToString();
+                Log($"Server đã chạy: {txtIP.Text}:{realPort}\n");
 
                 await AcceptClientsAsync();
             }
             catch (Exception ex)
             {
-                if (isRunning)
-                {
-                    AppendLog("Lỗi Server: " + ex.Message + "\n");
-                }
-
-                StopServerState();
+                if (isRunning) Log("Lỗi Server: " + ex.Message + "\n");
+                StopServer();
             }
         }
 
@@ -84,351 +76,595 @@ namespace UploadServer
                 try
                 {
                     TcpClient client = await listener.AcceptTcpClientAsync();
-
-                    _ = Task.Run(async () =>
-                    {
-                        await HandleClientAsync(client);
-                    });
+                    client.NoDelay = true;
+                    AddActiveClient(client);
+                    _ = Task.Run(() => HandleClientAsync(client));
                 }
-                catch (ObjectDisposedException)
-                {
-                    break;
-                }
-                catch (SocketException)
-                {
-                    if (isRunning)
-                    {
-                        AppendLog("Lỗi Socket khi chờ Client kết nối.\n");
-                    }
-
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    if (isRunning)
-                    {
-                        AppendLog("Lỗi khi nhận Client: " + ex.Message + "\n");
-                    }
-                }
+                catch (ObjectDisposedException) { break; }
+                catch (SocketException) { if (isRunning) Log("Server socket đã dừng.\n"); break; }
+                catch (Exception ex) { if (isRunning) Log("Lỗi nhận Client: " + ex.Message + "\n"); }
             }
         }
 
         private async Task HandleClientAsync(TcpClient client)
         {
-            string remoteEndPoint = "Unknown";
+            string remote = GetRemoteIp(client);
 
             try
             {
-                if (client.Client.RemoteEndPoint != null)
-                {
-                    remoteEndPoint = client.Client.RemoteEndPoint.ToString();
-                }
-
                 using (client)
                 using (NetworkStream stream = client.GetStream())
                 {
-                    /*
-                     * Protocol:
-                     *
-                     * Client gửi 4 bytes đầu:
-                     * "ping" = kiểm tra kết nối
-                     * "FILE" = upload file
-                     */
+                    byte[] commandBytes = await ReadExactAsync(stream, 4);
+                    if (commandBytes == null) return;
 
-                    byte[] commandBuffer = await ReadExactAsync(stream, 4);
-
-                    if (commandBuffer == null)
-                    {
-                        return;
-                    }
-
-                    string command = Encoding.UTF8.GetString(commandBuffer);
-
-                    if (command == "ping")
-                    {
-                        await HandlePingAsync(stream);
-
-                        // Không log ping liên tục để tránh spam log vì Client đang monitor server mỗi 2 giây
-                        return;
-                    }
-
-                    if (command == "FILE")
-                    {
-                        await HandleFileUploadAsync(stream, remoteEndPoint);
-                        return;
-                    }
-
-                    AppendLog($"Client {remoteEndPoint} gửi lệnh không hợp lệ: {command}\n");
+                    string command = Encoding.UTF8.GetString(commandBytes);
+                    if (command == "ping") await HandlePingAsync(stream, remote);
+                    else if (command == "FILE") await ReceiveLegacyFileAsync(stream, remote);
+                    else if (command == "F2LE") await ReceivePhase4FileAsync(stream, remote);
                 }
             }
             catch (Exception ex)
             {
-                AppendLog($"Lỗi xử lý Client {remoteEndPoint}: {ex.Message}\n");
+                if (!(ex is IOException) && !(ex is SocketException) && !(ex is ObjectDisposedException))
+                    Log($"Lỗi xử lý Client {remote}: {ex.Message}\n");
+            }
+            finally
+            {
+                RemoveActiveClient(client);
             }
         }
 
-        private async Task HandlePingAsync(NetworkStream stream)
+        private async Task HandlePingAsync(NetworkStream stream, string remote)
         {
-            byte[] response = Encoding.UTF8.GetBytes("pong");
-            await stream.WriteAsync(response, 0, response.Length);
+            AddOrRefreshClient(remote);
+            byte[] pong = Encoding.UTF8.GetBytes("pong");
+            await stream.WriteAsync(pong, 0, pong.Length);
             await stream.FlushAsync();
         }
 
-        private async Task HandleFileUploadAsync(NetworkStream stream, string remoteEndPoint)
+        private async Task ReceiveLegacyFileAsync(NetworkStream stream, string remote)
         {
-            /*
-             * Protocol nhận file:
-             *
-             * 4 bytes  : FILE
-             * 4 bytes  : độ dài tên file
-             * n bytes  : tên file UTF-8
-             * 8 bytes  : kích thước file
-             * data     : dữ liệu file từng chunk
-             */
+            AddOrRefreshClient(remote);
 
-            byte[] fileNameLengthBytes = await ReadExactAsync(stream, 4);
+            string savePath = null;
+            FileHeader header = null;
+            ReceivedFileInfo fileInfo = null;
 
-            if (fileNameLengthBytes == null)
+            try
             {
-                AppendLog("Không đọc được độ dài tên file.\n");
-                return;
+                header = await ReadLegacyHeaderAsync(stream);
+                string folder = PrepareUploadFolder();
+                savePath = ReserveUniquePath(Path.Combine(folder, header.FileName));
+
+                fileInfo = AddReceivedFile(remote, header.FileName, FormatSize(header.FileSize), "Đang tải");
+                Log($"Đang tải: {header.FileName}\n");
+
+                await SaveStreamToFileAsync(stream, savePath, 0, header.FileSize);
+
+                string savedName = Path.GetFileName(savePath);
+                UpdateReceivedFile(fileInfo, savedName, FormatSize(header.FileSize), "Thành công");
+                Log($"Thành công: {savedName}\n");
             }
-
-            int fileNameLength = BitConverter.ToInt32(fileNameLengthBytes, 0);
-
-            if (fileNameLength <= 0 || fileNameLength > 1024)
+            catch
             {
-                AppendLog("Độ dài tên file không hợp lệ.\n");
-                return;
+                DeleteFile(savePath);
+                MarkFailed(fileInfo, remote, header);
             }
-
-            byte[] fileNameBytes = await ReadExactAsync(stream, fileNameLength);
-
-            if (fileNameBytes == null)
+            finally
             {
-                AppendLog("Không đọc được tên file.\n");
-                return;
+                ReleaseReservedPath(savePath);
             }
+        }
 
-            string fileName = Encoding.UTF8.GetString(fileNameBytes);
-            fileName = Path.GetFileName(fileName);
+        private async Task ReceivePhase4FileAsync(NetworkStream stream, string remote)
+        {
+            AddOrRefreshClient(remote);
 
-            byte[] fileSizeBytes = await ReadExactAsync(stream, 8);
+            string finalPath = null;
+            string tempPath = null;
+            FileHeader header = null;
+            ReceivedFileInfo fileInfo = null;
+            bool deleteTempFile = false;
 
-            if (fileSizeBytes == null)
+            try
             {
-                AppendLog("Không đọc được kích thước file.\n");
-                return;
-            }
+                header = await ReadPhase4HeaderAsync(stream);
+                string folder = PrepareUploadFolder();
 
-            long fileSize = BitConverter.ToInt64(fileSizeBytes, 0);
+                finalPath = ReserveUniquePath(Path.Combine(folder, header.FileName));
+                tempPath = GetTempPathForResume(finalPath, header.Hash);
 
-            if (fileSize < 0)
-            {
-                AppendLog("Kích thước file không hợp lệ.\n");
-                return;
-            }
+                long offset = GetResumeOffset(tempPath, header.FileSize);
+                await WriteLongAsync(stream, offset);
+                await stream.FlushAsync();
 
-            string uploadFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Uploads");
+                fileInfo = AddReceivedFile(remote, header.FileName, FormatSize(header.FileSize), "Đang tải");
+                Log($"Đang tải: {header.FileName}\n");
 
-            if (!Directory.Exists(uploadFolder))
-            {
-                Directory.CreateDirectory(uploadFolder);
-            }
+                await SaveStreamToFileAsync(stream, tempPath, offset, header.FileSize);
 
-            string savePath = Path.Combine(uploadFolder, fileName);
-            savePath = GetUniqueFilePath(savePath);
-
-            AppendLog($"Client {remoteEndPoint} bắt đầu upload file: {fileName}\n");
-            AppendLog($"Dung lượng: {FormatFileSize(fileSize)}\n");
-            AppendLog($"Lưu tại: {savePath}\n");
-
-            byte[] buffer = new byte[64 * 1024];
-            long receivedBytes = 0;
-            int lastPercent = -1;
-
-            using (FileStream fileStream = new FileStream(
-                savePath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                64 * 1024,
-                true))
-            {
-                while (receivedBytes < fileSize)
+                if (!HashEquals(tempPath, header.Hash))
                 {
-                    int bytesToRead = buffer.Length;
+                    deleteTempFile = true;
+                    DeleteFile(tempPath);
+                    UpdateReceivedFile(fileInfo, header.FileName, FormatSize(header.FileSize), "Thất bại");
+                    Log($"Thất bại: {header.FileName}\n");
+                    await SendResultAsync(stream, "FAIL", "Checksum không khớp.");
+                    return;
+                }
 
-                    long remainingBytes = fileSize - receivedBytes;
+                File.Move(tempPath, finalPath);
+                string savedName = Path.GetFileName(finalPath);
+                UpdateReceivedFile(fileInfo, savedName, FormatSize(header.FileSize), "Thành công");
+                Log($"Thành công: {savedName}\n");
+                await SendResultAsync(stream, "DONE", "Upload thành công.");
+            }
+            catch
+            {
+                if (deleteTempFile) DeleteFile(tempPath);
+                MarkFailed(fileInfo, remote, header);
 
-                    if (remainingBytes < bytesToRead)
-                    {
-                        bytesToRead = (int)remainingBytes;
-                    }
+                try { await SendResultAsync(stream, "FAIL", "Upload thất bại."); }
+                catch { }
+            }
+            finally
+            {
+                ReleaseReservedPath(finalPath);
+            }
+        }
 
-                    int bytesRead = await stream.ReadAsync(buffer, 0, bytesToRead);
+        private async Task<FileHeader> ReadLegacyHeaderAsync(NetworkStream stream)
+        {
+            int nameLength = BitConverter.ToInt32(await ReadExactOrThrowAsync(stream, 4), 0);
+            if (nameLength <= 0 || nameLength > 1024) throw new InvalidDataException();
 
-                    if (bytesRead <= 0)
-                    {
-                        throw new IOException("Client đã ngắt kết nối khi đang upload file.");
-                    }
+            string fileName = Path.GetFileName(Encoding.UTF8.GetString(await ReadExactOrThrowAsync(stream, nameLength)));
+            long fileSize = BitConverter.ToInt64(await ReadExactOrThrowAsync(stream, 8), 0);
+            if (fileSize < 0) throw new InvalidDataException();
 
-                    await fileStream.WriteAsync(buffer, 0, bytesRead);
+            return new FileHeader { FileName = fileName, FileSize = fileSize };
+        }
 
-                    receivedBytes += bytesRead;
+        private async Task<FileHeader> ReadPhase4HeaderAsync(NetworkStream stream)
+        {
+            FileHeader header = await ReadLegacyHeaderAsync(stream);
+            int hashLength = BitConverter.ToInt32(await ReadExactOrThrowAsync(stream, 4), 0);
+            if (hashLength <= 0 || hashLength > 256) throw new InvalidDataException();
 
-                    int percent = fileSize == 0 ? 100 : (int)(receivedBytes * 100 / fileSize);
+            header.Hash = Encoding.UTF8.GetString(await ReadExactOrThrowAsync(stream, hashLength)).Trim().ToLowerInvariant();
+            if (header.Hash.Length == 0) throw new InvalidDataException();
 
-                    if (percent != lastPercent && percent % 10 == 0)
-                    {
-                        lastPercent = percent;
-                        AppendLog($"Đang nhận {fileName}: {percent}%\n");
-                    }
+            return header;
+        }
+
+        private async Task SaveStreamToFileAsync(NetworkStream stream, string path, long offset, long fileSize)
+        {
+            byte[] buffer = new byte[BufferSize];
+            long received = offset;
+
+            using (FileStream file = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None, BufferSize, true))
+            {
+                file.SetLength(offset);
+                file.Position = offset;
+
+                while (received < fileSize)
+                {
+                    int needRead = (int)Math.Min(buffer.Length, fileSize - received);
+                    int read = await stream.ReadAsync(buffer, 0, needRead);
+                    if (read <= 0) throw new IOException();
+
+                    await file.WriteAsync(buffer, 0, read);
+                    received += read;
                 }
             }
+        }
 
-            AppendLog($"Nhận file thành công: {Path.GetFileName(savePath)}\n");
-            AppendLog("Hoàn tất upload.\n");
+        private void MarkFailed(ReceivedFileInfo fileInfo, string remote, FileHeader header)
+        {
+            if (header == null) return;
+
+            if (fileInfo == null)
+                AddReceivedFile(remote, header.FileName, FormatSize(header.FileSize), "Thất bại");
+            else
+                UpdateReceivedFile(fileInfo, header.FileName, FormatSize(header.FileSize), "Thất bại");
+
+            Log($"Thất bại: {header.FileName}\n");
+        }
+
+        private async Task<byte[]> ReadExactOrThrowAsync(NetworkStream stream, int size)
+        {
+            byte[] data = await ReadExactAsync(stream, size);
+            if (data == null) throw new IOException();
+            return data;
         }
 
         private async Task<byte[]> ReadExactAsync(NetworkStream stream, int size)
         {
             byte[] buffer = new byte[size];
-            int totalRead = 0;
+            int total = 0;
 
-            while (totalRead < size)
+            while (total < size)
             {
-                int bytesRead = await stream.ReadAsync(buffer, totalRead, size - totalRead);
-
-                if (bytesRead <= 0)
-                {
-                    return null;
-                }
-
-                totalRead += bytesRead;
+                int read = await stream.ReadAsync(buffer, total, size - total);
+                if (read <= 0) return null;
+                total += read;
             }
 
             return buffer;
         }
 
+        private async Task WriteLongAsync(NetworkStream stream, long value)
+        {
+            byte[] data = BitConverter.GetBytes(value);
+            await stream.WriteAsync(data, 0, data.Length);
+        }
+
+        private async Task SendResultAsync(NetworkStream stream, string status, string message)
+        {
+            byte[] statusBytes = Encoding.UTF8.GetBytes(status.PadRight(4).Substring(0, 4));
+            byte[] messageBytes = Encoding.UTF8.GetBytes(message ?? "");
+
+            await stream.WriteAsync(statusBytes, 0, statusBytes.Length);
+            await stream.WriteAsync(BitConverter.GetBytes(messageBytes.Length), 0, 4);
+            if (messageBytes.Length > 0) await stream.WriteAsync(messageBytes, 0, messageBytes.Length);
+            await stream.FlushAsync();
+        }
+
         private void btnStop_Click(object sender, RoutedEventArgs e)
         {
-            if (!isRunning)
-            {
-                MessageBox.Show("Server chưa chạy!");
-                return;
-            }
-
             StopServer();
+            Log("Server đã dừng.\n");
         }
 
         private void StopServer()
         {
+            isRunning = false;
+            listener?.Stop();
+            listener = null;
+            StopClientCleanupLoop();
+            CloseActiveClients();
+            ClearClients();
+            SetServerState(false);
+        }
+
+        private void SetServerState(bool running)
+        {
+            isRunning = running;
+            btnStart.IsEnabled = !running;
+            btnStop.IsEnabled = running;
+            txtIP.IsEnabled = !running;
+            txtPort.IsEnabled = !running;
+            lblServerStatus.Text = running ? "Status: Running" : "Status: Offline";
+            ellServerStatus.Fill = running ? Brushes.LimeGreen : Brushes.Red;
+        }
+
+        private bool TryReadConfig(out int port)
+        {
+            txtIP.Text = GetLocalIPv4();
+            if (int.TryParse(txtPort.Text.Trim(), out port) && port >= 0 && port <= 65535) return true;
+
+            MessageBox.Show("Port chỉ được nhập số nguyên từ 0 đến 65535!");
+            port = 0;
+            return false;
+        }
+
+        private string GetLocalIPv4()
+        {
+            foreach (NetworkInterface network in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (network.OperationalStatus != OperationalStatus.Up) continue;
+                if (network.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                if (network.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
+
+                foreach (UnicastIPAddressInformation ip in network.GetIPProperties().UnicastAddresses)
+                    if (ip.Address.AddressFamily == AddressFamily.InterNetwork)
+                        return ip.Address.ToString();
+            }
+
+            return "127.0.0.1";
+        }
+
+        private string GetRemoteIp(TcpClient client)
+        {
             try
             {
-                isRunning = false;
-
-                if (listener != null)
-                {
-                    listener.Stop();
-                    listener = null;
-                }
-
-                StopServerState();
-
-                AppendLog("Server đã dừng.\n");
+                IPEndPoint endPoint = client.Client.RemoteEndPoint as IPEndPoint;
+                if (endPoint != null) return endPoint.Address.ToString();
             }
-            catch (Exception ex)
-            {
-                AppendLog("Lỗi khi dừng Server: " + ex.Message + "\n");
-            }
+            catch { }
+
+            return "Unknown";
         }
 
-        private void StopServerState()
+        private void AddActiveClient(TcpClient client)
         {
-            isRunning = false;
-
-            btnStart.IsEnabled = true;
-            btnStop.IsEnabled = false;
-            txtIP.IsEnabled = true;
-            txtPort.IsEnabled = true;
+            lock (activeTcpClientsLock) activeTcpClients.Add(client);
         }
 
-        private string GetUniqueFilePath(string filePath)
+        private void RemoveActiveClient(TcpClient client)
         {
-            if (!File.Exists(filePath))
-            {
-                return filePath;
-            }
-
-            string folder = Path.GetDirectoryName(filePath);
-            string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
-            string extension = Path.GetExtension(filePath);
-
-            string newFileName = $"{fileNameWithoutExtension}_{DateTime.Now:yyyyMMdd_HHmmss}{extension}";
-
-            return Path.Combine(folder, newFileName);
+            lock (activeTcpClientsLock) activeTcpClients.Remove(client);
         }
 
-        private string FormatFileSize(long bytes)
+        private void CloseActiveClients()
         {
-            if (bytes < 1024)
+            TcpClient[] list;
+            lock (activeTcpClientsLock)
             {
-                return bytes + " B";
+                list = activeTcpClients.ToArray();
+                activeTcpClients.Clear();
             }
 
-            double kb = bytes / 1024.0;
-
-            if (kb < 1024)
+            foreach (TcpClient client in list)
             {
-                return kb.ToString("0.00") + " KB";
+                try { client.Close(); }
+                catch { }
             }
-
-            double mb = kb / 1024.0;
-
-            if (mb < 1024)
-            {
-                return mb.ToString("0.00") + " MB";
-            }
-
-            double gb = mb / 1024.0;
-
-            return gb.ToString("0.00") + " GB";
         }
 
-        private void AppendLog(string message)
+        private void AddOrRefreshClient(string ip)
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => AddOrRefreshClient(ip)); return; }
+
+            ClientInfo item = clients.FirstOrDefault(c => c.IPClient == ip);
+            if (item == null)
+            {
+                clients.Add(new ClientInfo { STT = clients.Count + 1, IPClient = ip, LastSeen = DateTime.Now });
+                Log($"Client kết nối: {ip}\n");
+            }
+            else item.LastSeen = DateTime.Now;
+
+            lvClients.Items.Refresh();
+            UpdateCounters();
+        }
+
+        private void RemoveExpiredClients()
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(RemoveExpiredClients); return; }
+
+            DateTime now = DateTime.Now;
+            List<ClientInfo> expired = clients.Where(c => (now - c.LastSeen).TotalSeconds > ClientTimeoutSeconds).ToList();
+
+            foreach (ClientInfo item in expired)
+            {
+                clients.Remove(item);
+                Log($"Client ngắt kết nối: {item.IPClient}\n");
+            }
+
+            if (expired.Count == 0) return;
+            RenumberClients();
+            UpdateCounters();
+        }
+
+        private void ClearClients()
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(ClearClients); return; }
+            clients.Clear();
+            UpdateCounters();
+        }
+
+        private ReceivedFileInfo AddReceivedFile(string ip, string fileName, string size, string status)
         {
             if (!Dispatcher.CheckAccess())
-            {
-                Dispatcher.Invoke(() => AppendLog(message));
-                return;
-            }
+                return Dispatcher.Invoke(() => AddReceivedFile(ip, fileName, size, status));
 
+            ReceivedFileInfo item = new ReceivedFileInfo
+            {
+                STT = receivedFiles.Count + 1,
+                IPClient = ip,
+                FileName = fileName,
+                Size = size,
+                Status = status,
+                ReceivedTime = DateTime.Now.ToString("HH:mm:ss dd/MM/yyyy")
+            };
+
+            receivedFiles.Add(item);
+            UpdateCounters();
+            return item;
+        }
+
+        private void UpdateReceivedFile(ReceivedFileInfo item, string fileName, string size, string status)
+        {
+            if (item == null) return;
+            if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => UpdateReceivedFile(item, fileName, size, status)); return; }
+
+            item.FileName = fileName;
+            item.Size = size;
+            item.Status = status;
+            item.ReceivedTime = DateTime.Now.ToString("HH:mm:ss dd/MM/yyyy");
+            lvReceivedFiles.Items.Refresh();
+            UpdateCounters();
+        }
+
+        private void RenumberClients()
+        {
+            for (int i = 0; i < clients.Count; i++) clients[i].STT = i + 1;
+            lvClients.Items.Refresh();
+        }
+
+        private void UpdateCounters()
+        {
+            lblClientCount.Text = clients.Count + " Client(s) connected";
+            lblTotalFiles.Text = "Total files: " + receivedFiles.Count;
+        }
+
+        private void StartClientCleanupLoop()
+        {
+            StopClientCleanupLoop();
+            clientCleanupCts = new CancellationTokenSource();
+            CancellationToken token = clientCleanupCts.Token;
+
+            Task.Run(async () =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(1000, token);
+                        if (!isRunning) break;
+                        RemoveExpiredClients();
+                    }
+                    catch (TaskCanceledException) { break; }
+                    catch { }
+                }
+            }, token);
+        }
+
+        private void StopClientCleanupLoop()
+        {
+            if (clientCleanupCts == null) return;
+            clientCleanupCts.Cancel();
+            clientCleanupCts.Dispose();
+            clientCleanupCts = null;
+        }
+
+        private string PrepareUploadFolder()
+        {
+            string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Uploads");
+            Directory.CreateDirectory(folder);
+            return folder;
+        }
+
+        private string ReserveUniquePath(string path)
+        {
+            lock (filePathLock)
+            {
+                string folder = Path.GetDirectoryName(path);
+                string name = Path.GetFileNameWithoutExtension(path);
+                string ext = Path.GetExtension(path);
+                string candidate = path;
+
+                for (int i = 1; File.Exists(candidate) || reservedFilePaths.Contains(candidate); i++)
+                {
+                    candidate = Path.Combine(folder, $"{name}_{DateTime.Now:yyyyMMdd_HHmmssfff}_{i}{ext}");
+                    if (i > 9999) candidate = Path.Combine(folder, $"{name}_{Guid.NewGuid():N}{ext}");
+                }
+
+                reservedFilePaths.Add(candidate);
+                return candidate;
+            }
+        }
+
+        private void ReleaseReservedPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            lock (filePathLock) reservedFilePaths.Remove(path);
+        }
+
+        private long GetResumeOffset(string tempPath, long fileSize)
+        {
+            try
+            {
+                if (!File.Exists(tempPath)) return 0;
+
+                long length = new FileInfo(tempPath).Length;
+                if (length >= 0 && length <= fileSize) return length;
+
+                File.Delete(tempPath);
+            }
+            catch { }
+
+            return 0;
+        }
+
+        private string GetTempPathForResume(string finalPath, string sha256)
+        {
+            string folder = Path.GetDirectoryName(finalPath);
+            string name = Path.GetFileNameWithoutExtension(finalPath);
+            string ext = Path.GetExtension(finalPath);
+            string suffix = sha256.Length > 12 ? sha256.Substring(0, 12) : sha256;
+            return Path.Combine(folder, $"{name}_{suffix}{ext}.part");
+        }
+
+        private bool HashEquals(string path, string expectedHash)
+        {
+            using (SHA256 sha = SHA256.Create())
+            using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                byte[] hash = sha.ComputeHash(stream);
+                StringBuilder builder = new StringBuilder(hash.Length * 2);
+                foreach (byte b in hash) builder.Append(b.ToString("x2"));
+                return string.Equals(builder.ToString(), expectedHash, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        private void DeleteFile(string path)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path);
+            }
+            catch { }
+        }
+
+        private string FormatSize(long bytes)
+        {
+            if (bytes < 1024) return bytes + " B";
+            if (bytes < 1024 * 1024) return (bytes / 1024.0).ToString("0.00") + " KB";
+            if (bytes < 1024L * 1024 * 1024) return (bytes / 1024.0 / 1024).ToString("0.00") + " MB";
+            return (bytes / 1024.0 / 1024 / 1024).ToString("0.00") + " GB";
+        }
+
+        private void txtPort_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !IsValidPortText(GetNewPortText(e.Text));
+        }
+
+        private void txtPort_Paste(object sender, DataObjectPastingEventArgs e)
+        {
+            if (!e.DataObject.GetDataPresent(DataFormats.Text)) { e.CancelCommand(); return; }
+            if (!IsValidPortText(GetNewPortText(e.DataObject.GetData(DataFormats.Text).ToString()))) e.CancelCommand();
+        }
+
+        private string GetNewPortText(string input)
+        {
+            return txtPort.Text.Remove(txtPort.SelectionStart, txtPort.SelectionLength)
+                               .Insert(txtPort.SelectionStart, input);
+        }
+
+        private bool IsValidPortText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return true;
+            foreach (char c in text) if (!char.IsDigit(c)) return false;
+            return int.TryParse(text, out int port) && port >= 0 && port <= 65535;
+        }
+
+        private void Log(string message)
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => Log(message)); return; }
             txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}");
-            // Move caret to end and ensure the latest text is visible
-            txtLog.CaretIndex = txtLog.Text.Length;
             txtLog.ScrollToEnd();
         }
-        // Removed complex ScrollViewer-based auto-scroll logic to use simple caret + ScrollToEnd
 
         protected override void OnClosed(EventArgs e)
         {
-            try
-            {
-                isRunning = false;
-
-                if (listener != null)
-                {
-                    listener.Stop();
-                    listener = null;
-                }
-            }
-            catch
-            {
-                // Bỏ qua lỗi khi đóng app
-            }
-
+            StopServer();
             base.OnClosed(e);
         }
+    }
+
+    public class ClientInfo
+    {
+        public int STT { get; set; }
+        public string IPClient { get; set; }
+        public DateTime LastSeen { get; set; }
+    }
+
+    public class ReceivedFileInfo
+    {
+        public int STT { get; set; }
+        public string IPClient { get; set; }
+        public string FileName { get; set; }
+        public string Size { get; set; }
+        public string Status { get; set; }
+        public string ReceivedTime { get; set; }
+    }
+
+    internal class FileHeader
+    {
+        public string FileName { get; set; }
+        public long FileSize { get; set; }
+        public string Hash { get; set; }
     }
 }

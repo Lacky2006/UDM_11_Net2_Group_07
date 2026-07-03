@@ -15,6 +15,7 @@ Nếu build thành công, file chạy sẽ nằm trong thư mục:
 bin/Debug
 hoặc:
 bin/Release
+
 **Cách sử dụng ứng dụng**
 1. Chạy Server
 Mở UploadServer.exe.
